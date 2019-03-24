@@ -12,23 +12,27 @@ from __future__ import absolute_import, print_function
 import os
 import sys
 import shutil
+import logging
 import argparse
 import platform
 import functools
 import traceback
+
+if False:
+    logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
 
 # Import 3rd-party Libs
 import six
 import pip._internal.index
 import pip._internal.pep425tags
 import pip._internal.utils.appdirs
+
 PIP_TOOLS_CACHE_DIR = pip._internal.utils.appdirs.user_cache_dir('pip-tools')
 if os.path.exists(PIP_TOOLS_CACHE_DIR):
     # Always cleanup the pip tools dep cache since it can be influenced
     # by previous invocations
-    shutil.rmtree(PIP_TOOLS_CACHE_DIR)
-from piptools.exceptions import PipToolsError
-from piptools.scripts import compile as piptools_compile
+    shutil.rmtree(PIP_TOOLS_CACHE_DIR, ignore_errors=True)
+
 
 
 class ImpersonateSystem(object):
@@ -119,6 +123,89 @@ class CatureSTDs(object):
         return self._stdout.read()
 
 
+def compile_requirement_file(fpath, options, unknown_args, failures, changes, retry=True):
+
+    from piptools.exceptions import PipToolsError
+    from piptools.scripts import compile as piptools_compile
+
+    impersonations = {
+        'windows': ImpersonateWindows,
+        'linux': ImpersonatePassthrough
+    }
+
+    source_dir = os.path.dirname(fpath)
+    dest_dir = os.path.join(source_dir, 'py{}'.format(sys.version_info.major))
+    if not os.path.isdir(dest_dir):
+        os.makedirs(dest_dir)
+    outfile = os.path.basename(fpath).replace('.in', '.txt')
+    if options.out_prefix:
+        outfile = '{}-{}'.format(options.out_prefix, outfile)
+    outfile_path = os.path.join(dest_dir, outfile)
+    try:
+        with open(outfile_path) as rfh:
+            previous_content = rfh.read()
+    except (IOError, OSError):
+        previous_content = ''
+    call_args = ['pip-compile', '-o', outfile_path]
+    if unknown_args:
+        call_args += unknown_args
+    if options.include:
+        call_args += options.include
+    call_args.append(fpath)
+
+    original_sys_arg = sys.argv[:]
+    try:
+        with CatureSTDs() as capstds:
+            print('Running: {}'.format(' '.join(call_args)))
+            with impersonations[options.platform]():
+                sys.argv = call_args[:]
+                try:
+                    piptools_compile.cli()
+                except PipToolsError as exc:
+                    failures[fpath] = {
+                        'stdout': capstds.stdout,
+                        'stderr': capstds.stderr,
+                        'exc': traceback.format_exc()
+                    }
+                except SystemExit as exc:
+                    if exc.code != 0:
+                        failures[fpath] = {
+                            'stdout': capstds.stdout,
+                            'stderr': capstds.stderr,
+                            'exc': traceback.format_exc()
+                        }
+                    with open(outfile_path) as rfh:
+                        if rfh.read() != previous_content:
+                            changes[fpath] = {
+                                'stdout': capstds.stdout,
+                                'stderr': capstds.stderr,
+                                'exc': None
+                            }
+                except pip._internal.index.DistributionNotFound:
+                    if retry:
+                        return compile_requirement_file(
+                            fpath,
+                            options,
+                            unknown_args,
+                            failures,
+                            changes,
+                            retry=False)
+
+                    failures[fpath] = {
+                        'stdout': capstds.stdout,
+                        'stderr': capstds.stderr,
+                        'exc': traceback.format_exc()
+                    }
+                except Exception:
+                    failures[fpath] = {
+                        'stdout': capstds.stdout,
+                        'stderr': capstds.stderr,
+                        'exc': traceback.format_exc()
+                    }
+    finally:
+        sys.argv = original_sys_arg
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -132,72 +219,10 @@ def main():
 
     options, unknown_args = parser.parse_known_args()
 
-    impersonations = {
-        'windows': ImpersonateWindows,
-        'linux': ImpersonatePassthrough
-    }
-
     changes = {}
     failures = {}
-    original_sys_arg = sys.argv[:]
-    try:
-        for fpath in options.files:
-            source_dir = os.path.dirname(fpath)
-            dest_dir = os.path.join(source_dir, 'py{}'.format(sys.version_info.major))
-            if not os.path.isdir(dest_dir):
-                os.makedirs(dest_dir)
-            outfile = os.path.basename(fpath).replace('.in', '.txt')
-            if options.out_prefix:
-                outfile = '{}-{}'.format(options.out_prefix, outfile)
-            outfile_path = os.path.join(dest_dir, outfile)
-            try:
-                with open(outfile_path) as rfh:
-                    previous_content = rfh.read()
-            except (IOError, OSError):
-                previous_content = ''
-            call_args = ['pip-compile', '-o', outfile_path]
-            if unknown_args:
-                call_args += unknown_args
-            if options.include:
-                call_args += options.include
-            call_args.append(fpath)
-            with CatureSTDs() as capstds:
-                print('Running: {}'.format(' '.join(call_args)))
-                with impersonations[options.platform]():
-                    sys.argv = call_args[:]
-                    try:
-                        piptools_compile.cli()
-                    except PipToolsError as exc:
-                        failures[fpath] = {
-                            'stdout': capstds.stdout,
-                            'stderr': capstds.stderr,
-                            'exc': traceback.format_exc()
-                        }
-                        continue
-                    except SystemExit as exc:
-                        if exc.code != 0:
-                            failures[fpath] = {
-                                'stdout': capstds.stdout,
-                                'stderr': capstds.stderr,
-                                'exc': traceback.format_exc()
-                            }
-                            continue
-                        with open(outfile_path) as rfh:
-                            if rfh.read() != previous_content:
-                                changes[fpath] = {
-                                    'stdout': capstds.stdout,
-                                    'stderr': capstds.stderr,
-                                    'exc': None
-                                }
-                    except Exception:
-                        failures[fpath] = {
-                            'stdout': capstds.stdout,
-                            'stderr': capstds.stderr,
-                            'exc': traceback.format_exc()
-                        }
-                        continue
-    finally:
-        sys.argv = original_sys_arg
+    for fpath in options.files:
+        compile_requirement_file(fpath, options, unknown_args, failures, changes)
 
     if failures:
         for fpath, stds in failures.items():
