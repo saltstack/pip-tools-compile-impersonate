@@ -1,0 +1,213 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+'''
+    pip-tools-compile
+    ~~~~~~~~~~~~~~~~~
+
+    Wrapper around pip-tools to "impersonate" different distributions when compiling requirements
+'''
+
+# Import Python Libs
+from __future__ import absolute_import, print_function
+import os
+import sys
+import argparse
+import platform
+import functools
+import traceback
+
+# Import 3rd-party Libs
+import six
+import pip._internal.index
+import pip._internal.pep425tags
+from piptools.exceptions import PipToolsError
+from piptools.scripts import compile as piptools_compile
+
+
+class ImpersonateSystem(object):
+
+    __slots__ = ('_data', '_store')
+
+    def __init__(self):
+        self._store = {}
+
+    def __enter__(self):
+        for (obj, name), value in self._data.items():
+            patching_object = getattr(obj, name)
+            self._store[(obj, name)] = patching_object
+
+            if callable(patching_object):
+                import functools
+                @functools.wraps(patching_object)
+                def wrapper(*args, **kwargs):
+                    if callable(value):
+                        return value(*args, **kwargs)
+                    return value
+
+                setattr(obj, name, wrapper)
+                del wrapper
+            else:
+                setattr(obj, name, value)
+        return self
+
+    def __exit__(self, *args):
+        for (obj, key), value in self._store.items():
+            setattr(obj, key, value)
+
+
+# Keep a reference to the original function
+original_get_supported = pip._internal.pep425tags.get_supported
+
+
+def get_supported_with_fixed_unicode_width(*args, **kwargs):
+    supported = original_get_supported(*args, **kwargs)
+    for version, abi, arch in supported[:]:
+        if abi.endswith('u'):
+            supported.append((version, abi[:-1], arch))
+    return supported
+
+
+class ImpersonateWindows(ImpersonateSystem):
+    _data = {
+        (os, 'name'): 'nt',
+        (platform, 'machine'): 'AMD64',
+        (platform, 'release'): '8.1',
+        (platform, 'system'): 'Windows',
+        (platform, 'version'): '6.3.9600',
+        (sys, 'platform'): 'win32',
+        (pip._internal.pep425tags, 'get_supported'): get_supported_with_fixed_unicode_width,
+        (pip._internal.index, 'get_supported'): get_supported_with_fixed_unicode_width
+    }
+
+
+class ImpersonatePassthrough(ImpersonateSystem):
+    _data = {}
+
+
+class CatureSTDs(object):
+
+    def __init__(self):
+        self._stdout = six.StringIO()
+        self._stderr = six.StringIO()
+        self._sys_stdout = sys.stdout
+        self._sys_stderr = sys.stderr
+
+    def __enter__(self):
+        sys.stdout = self._stdout
+        sys.stderr = self._stderr
+        return self
+
+    def __exit__(self, *args):
+        sys.stdout = self._sys_stdout
+        sys.stderr = self._sys_stderr
+
+    @property
+    def stdout(self):
+        self._stdout.seek(0)
+        return self._stdout.read()
+
+    @property
+    def stderr(self):
+        self._stdout.seek(0)
+        return self._stdout.read()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--platform',
+        choices=('windows', 'darwin', 'linux'),
+        default=platform.system().lower()
+    )
+    parser.add_argument('--include', action='append', default=[])
+    parser.add_argument('--out-prefix', default=None)
+    parser.add_argument('files', nargs='+')
+
+    options, unknown_args = parser.parse_known_args()
+
+    impersonations = {
+        'windows': ImpersonateWindows,
+        'linux': ImpersonatePassthrough
+    }
+
+    changes = {}
+    failures = {}
+    original_sys_arg = sys.argv[:]
+    try:
+        for fpath in options.files:
+            source_dir = os.path.dirname(fpath)
+            dest_dir = os.path.join(source_dir, 'py{}'.format(sys.version_info.major))
+            if not os.path.isdir(dest_dir):
+                os.makedirs(dest_dir)
+            outfile = os.path.basename(fpath).replace('.in', '.txt')
+            if options.out_prefix:
+                outfile = '{}-{}'.format(options.out_prefix, outfile)
+            outfile_path = os.path.join(dest_dir, outfile)
+            try:
+                with open(outfile_path) as rfh:
+                    previous_content = rfh.read()
+            except (IOError, OSError):
+                previous_content = ''
+            call_args = ['pip-compile', '-o', outfile_path]
+            if unknown_args:
+                call_args += unknown_args
+            if options.include:
+                call_args += options.include
+            call_args.append(fpath)
+            with CatureSTDs() as capstds:
+                print('Running: {}'.format(' '.join(call_args)))
+                with impersonations[options.platform]():
+                    sys.argv = call_args[:]
+                    try:
+                        piptools_compile.cli()
+                    except PipToolsError as exc:
+                        failures[fpath] = {
+                            'stdout': capstds.stdout,
+                            'stderr': capstds.stderr,
+                            'exc': traceback.format_exc()
+                        }
+                        continue
+                    except SystemExit as exc:
+                        if exc.code != 0:
+                            failures[fpath] = {
+                                'stdout': capstds.stdout,
+                                'stderr': capstds.stderr,
+                                'exc': traceback.format_exc()
+                            }
+                            continue
+                        with open(outfile_path) as rfh:
+                            if rfh.read() != previous_content:
+                                changes[fpath] = {
+                                    'stdout': capstds.stdout,
+                                    'stderr': capstds.stderr,
+                                    'exc': None
+                                }
+                    except Exception:
+                        failures[fpath] = {
+                            'stdout': capstds.stdout,
+                            'stderr': capstds.stderr,
+                            'exc': traceback.format_exc()
+                        }
+                        continue
+    finally:
+        sys.argv = original_sys_arg
+
+    if failures:
+        for fpath, stds in failures.items():
+            print('Failed to process {}'.format(fpath))
+            print('Exception:')
+            print(stds['exc'])
+            print('STDOUT:')
+            print(stds['stdout'])
+            print('STDERR:')
+            print(stds['stderr'])
+        sys.exit(1)
+    else:
+        if changes:
+            for fpath, stds in failures.items():
+                print('{} changed...'.format(fpath))
+        sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()

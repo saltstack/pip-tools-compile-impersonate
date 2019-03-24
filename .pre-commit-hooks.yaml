@@ -1,0 +1,6 @@
+- id: pip-tools-compile
+  name: Pip Tools pip-compile
+  entry: pip-tools-compile
+  language: python
+  args: []
+  additional_dependencies: []
