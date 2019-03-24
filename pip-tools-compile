@@ -174,6 +174,7 @@ def compile_requirement_file(fpath, options, unknown_args, failures, changes, re
                             'stderr': capstds.stderr,
                             'exc': traceback.format_exc()
                         }
+                        return
                     with open(outfile_path) as rfh:
                         if rfh.read() != previous_content:
                             changes[fpath] = {
