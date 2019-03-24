@@ -4,3 +4,4 @@
   language: python
   args: []
   additional_dependencies: []
+  require_serial: true
