@@ -222,6 +222,8 @@ def main():
     changes = {}
     failures = {}
     for fpath in options.files:
+        if not fpath.endswith('.in'):
+            continue
         compile_requirement_file(fpath, options, unknown_args, failures, changes)
 
     if failures:
