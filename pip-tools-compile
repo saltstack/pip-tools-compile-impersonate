@@ -11,6 +11,7 @@
 from __future__ import absolute_import, print_function
 import os
 import sys
+import shutil
 import argparse
 import platform
 import functools
@@ -20,6 +21,12 @@ import traceback
 import six
 import pip._internal.index
 import pip._internal.pep425tags
+import pip._internal.utils.appdirs
+PIP_TOOLS_CACHE_DIR = pip._internal.utils.appdirs.user_cache_dir('pip-tools')
+if os.path.exists(PIP_TOOLS_CACHE_DIR):
+    # Always cleanup the pip tools dep cache since it can be influenced
+    # by previous invocations
+    shutil.rmtree(PIP_TOOLS_CACHE_DIR)
 from piptools.exceptions import PipToolsError
 from piptools.scripts import compile as piptools_compile
 
@@ -195,17 +202,20 @@ def main():
     if failures:
         for fpath, stds in failures.items():
             print('Failed to process {}'.format(fpath))
-            print('Exception:')
-            print(stds['exc'])
-            print('STDOUT:')
-            print(stds['stdout'])
-            print('STDERR:')
-            print(stds['stderr'])
+            if stds['exc']:
+                print('Exception:')
+                print(stds['exc'])
+            if stds['stdout']:
+                print('STDOUT:')
+                print(stds['stdout'])
+            if stds['stderr']:
+                print('STDERR:')
+                print(stds['stderr'])
         sys.exit(1)
     else:
         if changes:
             for fpath, stds in failures.items():
-                print('{} changed...'.format(fpath))
+                print('{} contents changed...'.format(fpath))
         sys.exit(0)
 
 
