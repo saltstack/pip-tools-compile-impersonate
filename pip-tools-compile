@@ -29,12 +29,21 @@ import six
 
 class ImpersonateSystem(object):
 
-    __slots__ = ('_store',)
+    __slots__ = ('_store', '_python_version_info')
 
-    def __init__(self):
+    def __init__(self, python_version_info=None):
         self._store = {}
+        if python_version_info:
+            parts = [int(part) for part in python_version_info.split('.') if part.isdigit()]
+            python_version_info = list(sys.version_info)
+            for idx, part in enumerate(parts):
+                python_version_info[idx] = part
+            python_version_info = tuple(python_version_info)
+        self._python_version_info = python_version_info
 
     def get_patches(self):
+        if self._python_version_info:
+            return {(sys, 'version_info'): self._python_version_info}
         return {}
 
     def __enter__(self):
@@ -82,7 +91,8 @@ class ImpersonateWindows(ImpersonateSystem):
             setattr(get_supported_with_fixed_unicode_width,
                     '__original__',
                     pip._internal.pep425tags.get_supported)
-        return {
+        patches = super(ImpersonateWindows, self).get_patches()
+        patches.update({
             (os, 'name'): 'nt',
             (platform, 'machine'): 'AMD64',
             (platform, 'release'): '8.1',
@@ -91,7 +101,8 @@ class ImpersonateWindows(ImpersonateSystem):
             (sys, 'platform'): 'win32',
             (pip._internal.pep425tags, 'get_supported'): get_supported_with_fixed_unicode_width,
             (pip._internal.index, 'get_supported'): get_supported_with_fixed_unicode_width
-        }
+        })
+        return patches
 
 
 class ImpersonatePassthrough(ImpersonateSystem):
@@ -157,7 +168,7 @@ def compile_requirement_file(fpath, options, unknown_args, failures, changes, re
     try:
         with CatureSTDs() as capstds:
             print('Running: {}'.format(' '.join(call_args)))
-            with impersonations[options.platform]():
+            with impersonations[options.platform](options.py_version):
                 # Late import
                 import pip._internal.index
                 import piptools.scripts.compile
@@ -211,6 +222,7 @@ def main():
         choices=('windows', 'darwin', 'linux'),
         default=platform.system().lower()
     )
+    parser.add_argument('--py-version', default=None)
     parser.add_argument('--include', action='append', default=[])
     parser.add_argument('--out-prefix', default=None)
     parser.add_argument('files', nargs='+')
