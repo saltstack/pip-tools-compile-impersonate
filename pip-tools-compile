@@ -17,14 +17,30 @@ import logging
 import argparse
 import platform
 import tempfile
-import functools
 import traceback
+try:
+    from unittest import mock
+except ImportError:
+    import mock
 
 if False:
     logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
 
 # Import 3rd-party Libs
 import six
+import piptools.locations
+import piptools.scripts.compile
+# Let's import get_supported because we need the returned value from the un-mocked function
+from pip._internal.pep425tags import get_supported
+
+PIP_TOOLS_CACHE_DIR = tempfile.mkdtemp(prefix='pip-tools-compile-cache-')
+# Make sure we cleanup after ourselves
+atexit.register(shutil.rmtree, PIP_TOOLS_CACHE_DIR, ignore_errors=True)
+
+# Switch to our temp cache dir
+piptools.locations.CACHE_DIR = PIP_TOOLS_CACHE_DIR
+
+log = logging.getLogger(__name__)
 
 
 class ImpersonateSystem(object):
@@ -34,44 +50,26 @@ class ImpersonateSystem(object):
     def __init__(self, python_version_info=None):
         self._store = {}
         if python_version_info:
-            parts = [int(part) for part in python_version_info.split('.') if part.isdigit()]
-            python_version_info = list(sys.version_info)
-            for idx, part in enumerate(parts):
-                python_version_info[idx] = part
-            python_version_info = tuple(python_version_info)
+            python_version_info = tuple(int(part) for part in python_version_info.split('.') if part.isdigit())
         self._python_version_info = python_version_info
 
-    def get_patches(self):
+    def get_mocks(self):
         if self._python_version_info:
-            return {(sys, 'version_info'): self._python_version_info}
-        return {}
+            yield mock.patch('pip._internal.pep425tags.get_impl_version_info',
+                             return_value=self._python_version_info[:2])
+        raise StopIteration
 
     def __enter__(self):
-        for (obj, name), value in self.get_patches().items():
-            patching_object = getattr(obj, name)
-            self._store[(obj, name)] = patching_object
-
-            if callable(patching_object):
-
-                @functools.wraps(patching_object)
-                def wrapper(*args, **kwargs):
-                    if callable(value):
-                        return value(*args, **kwargs)
-                    return value
-
-                setattr(obj, name, wrapper)
-                del wrapper
-            else:
-                setattr(obj, name, value)
+        for mock_obj in self.get_mocks():
+            mock_obj.start()
         return self
 
     def __exit__(self, *args):
-        for (obj, key), value in self._store.items():
-            setattr(obj, key, value)
+        mock.patch.stopall()
 
 
 def get_supported_with_fixed_unicode_width(*args, **kwargs):
-    supported = get_supported_with_fixed_unicode_width.__original__(*args, **kwargs)
+    supported = get_supported(*args, **kwargs)
     for version, abi, arch in supported[:]:
         if abi.endswith('u'):
             supported.append((version, abi[:-1], arch))
@@ -80,29 +78,16 @@ def get_supported_with_fixed_unicode_width(*args, **kwargs):
 
 class ImpersonateWindows(ImpersonateSystem):
 
-    def get_patches(self):
-        # Late imports
-        import pip._internal.index
-        import pip._internal.pep425tags
-        # Store a reference to the orifinal get_supported function
-        try:
-            get_supported_with_fixed_unicode_width.__original__
-        except AttributeError:
-            setattr(get_supported_with_fixed_unicode_width,
-                    '__original__',
-                    pip._internal.pep425tags.get_supported)
-        patches = super(ImpersonateWindows, self).get_patches()
-        patches.update({
-            (os, 'name'): 'nt',
-            (platform, 'machine'): 'AMD64',
-            (platform, 'release'): '8.1',
-            (platform, 'system'): 'Windows',
-            (platform, 'version'): '6.3.9600',
-            (sys, 'platform'): 'win32',
-            (pip._internal.pep425tags, 'get_supported'): get_supported_with_fixed_unicode_width,
-            (pip._internal.index, 'get_supported'): get_supported_with_fixed_unicode_width
-        })
-        return patches
+    def get_mocks(self):
+        for entry in super(ImpersonateWindows, self).get_mocks():
+            yield entry
+        # We don't want pip trying query python's internals, it knows how to mock that internal information
+        yield mock.patch('pip._internal.pep425tags.get_config_var', return_value=None)
+        # Impersonate Windows 32
+        yield mock.patch('pip._internal.pep425tags.get_platform', return_value='win32')
+        # Wrap get_supported in out own function call to fix unicode width issues
+        yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
+        yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
 
 
 class ImpersonatePassthrough(ImpersonateSystem):
@@ -145,7 +130,7 @@ def compile_requirement_file(fpath, options, unknown_args, failures, changes, re
     }
 
     source_dir = os.path.dirname(fpath)
-    dest_dir = os.path.join(source_dir, 'py{}'.format(sys.version_info.major))
+    dest_dir = os.path.join(source_dir, 'py{}'.format(options.py_version))
     if not os.path.isdir(dest_dir):
         os.makedirs(dest_dir)
     outfile = os.path.basename(fpath).replace('.in', '.txt')
@@ -165,24 +150,25 @@ def compile_requirement_file(fpath, options, unknown_args, failures, changes, re
     call_args.append(fpath)
 
     original_sys_arg = sys.argv[:]
+    retry = False
     try:
         with CatureSTDs() as capstds:
             print('Running: {}'.format(' '.join(call_args)))
             with impersonations[options.platform](options.py_version):
-                # Late import
-                import pip._internal.index
-                import piptools.scripts.compile
                 sys.argv = call_args[:]
                 try:
                     piptools.scripts.compile.cli()
                 except SystemExit as exc:
                     if exc.code != 0:
-                        failures[fpath] = {
-                            'stdout': capstds.stdout,
-                            'stderr': capstds.stderr,
-                            'exc': traceback.format_exc()
-                        }
-                        return
+                        if retries:
+                            retry = True
+                        else:
+                            failures[fpath] = {
+                                'stdout': capstds.stdout,
+                                'stderr': capstds.stderr,
+                                'exc': traceback.format_exc()
+                            }
+                            return
                     with open(outfile_path) as rfh:
                         if rfh.read() != previous_content:
                             changes[fpath] = {
@@ -190,29 +176,29 @@ def compile_requirement_file(fpath, options, unknown_args, failures, changes, re
                                 'stderr': capstds.stderr,
                                 'exc': None
                             }
-                except pip._internal.index.DistributionNotFound:
-                    if retries:
-                        return compile_requirement_file(
-                            fpath,
-                            options,
-                            unknown_args,
-                            failures,
-                            changes,
-                            retries=retries-1)
-
-                    failures[fpath] = {
-                        'stdout': capstds.stdout,
-                        'stderr': capstds.stderr,
-                        'exc': traceback.format_exc()
-                    }
                 except Exception:
-                    failures[fpath] = {
-                        'stdout': capstds.stdout,
-                        'stderr': capstds.stderr,
-                        'exc': traceback.format_exc()
-                    }
+                    if retries:
+                        retry = True
+                    else:
+                        failures[fpath] = {
+                            'stdout': capstds.stdout,
+                            'stderr': capstds.stderr,
+                            'exc': traceback.format_exc()
+                        }
     finally:
         sys.argv = original_sys_arg
+
+    if retry is True:
+        # Make sure there's no piptools cache, this will require downloading packages again
+        # but at least it starts from scratch
+        shutil.rmtree(PIP_TOOLS_CACHE_DIR)
+        os.makedirs(PIP_TOOLS_CACHE_DIR)
+        return compile_requirement_file(fpath,
+                                        options,
+                                        unknown_args,
+                                        failures,
+                                        changes,
+                                        retries=retries-1)
 
 
 def main():
@@ -222,20 +208,12 @@ def main():
         choices=('windows', 'darwin', 'linux'),
         default=platform.system().lower()
     )
-    parser.add_argument('--py-version', default=None)
+    parser.add_argument('--py-version', default='{}.{}'.format(*sys.version_info))
     parser.add_argument('--include', action='append', default=[])
     parser.add_argument('--out-prefix', default=None)
     parser.add_argument('files', nargs='+')
 
     options, unknown_args = parser.parse_known_args()
-
-    # Tweak the pip-tools cache location. We always want a clean cache
-    import piptools.locations
-    PIP_TOOLS_CACHE_DIR = tempfile.mkdtemp(prefix='pip-tools-compile-cache-')
-    # Switch to our temp cache dir
-    piptools.locations.CACHE_DIR = PIP_TOOLS_CACHE_DIR
-    # Make sure we cleanup after ourselves
-    atexit.register(shutil.rmtree, PIP_TOOLS_CACHE_DIR, ignore_errors=True)
 
     changes = {}
     failures = {}
