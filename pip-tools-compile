@@ -45,12 +45,15 @@ log = logging.getLogger(__name__)
 
 class ImpersonateSystem(object):
 
-    __slots__ = ('_store', '_python_version_info')
+    __slots__ = ('_python_version_info')
 
     def __init__(self, python_version_info=None):
-        self._store = {}
         if python_version_info:
-            python_version_info = tuple(int(part) for part in python_version_info.split('.') if part.isdigit())
+            parts = [int(part) for part in python_version_info.split('.') if part.isdigit()]
+            python_version_info = list(sys.version_info)
+            for idx, part in enumerate(parts):
+                python_version_info[idx] = part
+            python_version_info = tuple(python_version_info)
         self._python_version_info = python_version_info
 
     def get_mocks(self):
@@ -88,6 +91,11 @@ class ImpersonateWindows(ImpersonateSystem):
         # Wrap get_supported in out own function call to fix unicode width issues
         yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
         yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
+        # Patch pip's vendored packaging markers
+        yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='AMD64')
+        yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='8.1')
+        yield mock.patch('pip._vendor.packaging.markers.platform.system', return_value='Windows')
+        yield mock.patch('pip._vendor.packaging.markers.platform.version', return_value='6.3.9600')
 
 
 class ImpersonateDarwin(ImpersonateSystem):
@@ -102,6 +110,14 @@ class ImpersonateDarwin(ImpersonateSystem):
         # Wrap get_supported in out own function call to fix unicode width issues
         yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
         yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
+        # Patch pip's vendored packaging markers
+        yield mock.patch('pip._vendor.packaging.markers.sys.platform', new_callable=mock.PropertyMock(return_value='darwin'))
+        yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='x86_64')
+        yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='18.5.0')
+        yield mock.patch('pip._vendor.packaging.markers.platform.system', return_value='Darwin')
+        yield mock.patch('pip._vendor.packaging.markers.platform.version',
+                         return_value='Darwin Kernel Version 18.5.0: Mon Mar 11 20:40:32 PDT 2019; root:xnu-4903.251.3~3/RELEASE_X86_64')
+        yield mock.patch('pip._vendor.packaging.markers.platform.python_version', return_value='{}.{}.{}'.format(*self._python_version_info))
 
 
 
