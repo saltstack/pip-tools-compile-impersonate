@@ -96,6 +96,8 @@ class ImpersonateWindows(ImpersonateSystem):
         yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
         yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
         # Patch pip's vendored packaging markers
+        yield mock.patch('pip._vendor.packaging.markers.os.name', new_callable=mock.PropertyMock(return_value='nt'))
+        yield mock.patch('pip._vendor.packaging.markers.sys.platform', new_callable=mock.PropertyMock(return_value='win32'))
         yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='AMD64')
         yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='8.1')
         yield mock.patch('pip._vendor.packaging.markers.platform.system', return_value='Windows')
@@ -115,6 +117,7 @@ class ImpersonateDarwin(ImpersonateSystem):
         yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
         yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
         # Patch pip's vendored packaging markers
+        yield mock.patch('pip._vendor.packaging.markers.os.name', new_callable=mock.PropertyMock(return_value='posix'))
         yield mock.patch('pip._vendor.packaging.markers.sys.platform', new_callable=mock.PropertyMock(return_value='darwin'))
         yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='x86_64')
         yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='18.5.0')
@@ -137,7 +140,9 @@ class ImpersonateLinux(ImpersonateSystem):
         yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
         yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
         # Patch pip's vendored packaging markers
-        yield mock.patch('pip._vendor.packaging.markers.sys.platform', new_callable=mock.PropertyMock(return_value='linux2'))
+        yield mock.patch('pip._vendor.packaging.markers.sys.platform',
+                new_callable=mock.PropertyMock(return_value='linux{}'.format('2' if self._python_version_info[0] == 2 else '')))
+        yield mock.patch('pip._vendor.packaging.markers.os.name', new_callable=mock.PropertyMock(return_value='posix'))
         yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='x86_64')
         yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='4.19.29-1-lts')
         yield mock.patch('pip._vendor.packaging.markers.platform.system', return_value='Linux')
