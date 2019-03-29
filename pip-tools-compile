@@ -23,22 +23,26 @@ try:
 except ImportError:
     import mock
 
+CAPTURE_OUTPUT = os.environ.get('CAPTURE_OUTPUT', '1') == '1'
+
 if False:
     logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
 
 # Import 3rd-party Libs
 import six
-import piptools.locations
-import piptools.scripts.compile
-# Let's import get_supported because we need the returned value from the un-mocked function
-from pip._internal.pep425tags import get_supported
 
+# Import pip-tools Libs
+import piptools.locations
 PIP_TOOLS_CACHE_DIR = tempfile.mkdtemp(prefix='pip-tools-compile-cache-')
 # Make sure we cleanup after ourselves
 atexit.register(shutil.rmtree, PIP_TOOLS_CACHE_DIR, ignore_errors=True)
-
 # Switch to our temp cache dir
 piptools.locations.CACHE_DIR = PIP_TOOLS_CACHE_DIR
+import piptools.scripts.compile
+
+# Let's import get_supported because we need the returned value from the un-mocked function
+from pip._internal.pep425tags import get_supported
+
 
 log = logging.getLogger(__name__)
 
@@ -158,6 +162,11 @@ class CatureSTDs(object):
     def __exit__(self, *args):
         sys.stdout = self._sys_stdout
         sys.stderr = self._sys_stderr
+        if not CAPTURE_OUTPUT:
+            self._stdout.seek(0)
+            sys.stdout.write(self._stdout.read())
+            self._stderr.seek(0)
+            sys.stderr.write(self._stderr.read())
 
     @property
     def stdout(self):
@@ -203,6 +212,8 @@ def compile_requirement_file(fpath, options, unknown_args, failures, changes, re
     try:
         with CatureSTDs() as capstds:
             print('Running: {}'.format(' '.join(call_args)))
+            print('  Impersonating: {}'.format(options.platform))
+            print('  Mocked Python Version: {}'.format(options.py_version))
             with impersonations[options.platform](options.py_version):
                 sys.argv = call_args[:]
                 try:
@@ -288,6 +299,7 @@ def main():
         if changes:
             for fpath, stds in failures.items():
                 print('{} contents changed...'.format(fpath))
+        print('Done.')
         sys.exit(0)
 
 
