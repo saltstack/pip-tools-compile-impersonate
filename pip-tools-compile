@@ -65,8 +65,10 @@ class ImpersonateSystem(object):
 
     def get_mocks(self):
         if self._python_version_info:
-            yield mock.patch('piptools.cache.sys.version_info',
-                             new_callable=mock.PropertyMock(return_value=self._python_version_info))
+            # We actually can't mock the next sys.version_info because that'll cause FS IO issues
+            # when running under py3 impersonating py2
+            #yield mock.patch('piptools.cache.sys.version_info',
+            #                 new_callable=mock.PropertyMock(return_value=self._python_version_info))
             yield mock.patch('pip._internal.pep425tags.get_impl_version_info',
                              return_value=self._python_version_info[:2])
         raise StopIteration
