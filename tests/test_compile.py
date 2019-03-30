@@ -109,3 +109,42 @@ def test_markers(run_command, platform, marker, expected):
         compiled_contents = crfh.read()
     assert expected in compiled_contents, \
             'The {!r} was not found in the compiled output\n{}'.format(expected, compiled_contents)
+
+
+@pytest.mark.parametrize('platform', ['linux', 'darwin', 'windows'])
+def test_pywin32(run_command, platform):
+    '''
+    pywin32 has been an issue when mocking the requirements file compilation. test it.
+    '''
+    input_requirement_name = 'pywin32-req'
+    input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, '{}.in'.format(input_requirement_name))
+    with open(input_requirement, 'w') as wfh:
+        wfh.write(textwrap.dedent('''\
+            pep8
+            pywin32==223; sys.platform == 'win32'
+            '''
+            )
+        )
+    compiled_requirements = os.path.join(
+        INPUT_REQUIREMENTS_DIR,
+        'py{}.{}'.format(*sys.version_info),
+        '{}.txt'.format(input_requirement_name)
+    )
+    if os.path.exists(compiled_requirements):
+        os.unlink(compiled_requirements)
+    # Run it through pip-tools-compile
+    retcode = run_command(
+        'pip-tools-compile',
+        '-v',
+        '--platform={}'.format(platform),
+        input_requirement
+    )
+    assert retcode == 0
+    with open(compiled_requirements) as crfh:
+        compiled_contents = crfh.read()
+    if platform == 'windows':
+        assert 'pywin32==' in compiled_contents, \
+            'The pywin32 requirement was not found in the compiled output\n{}'.format(compiled_contents)
+    else:
+        assert 'pywin32==' not in compiled_contents, \
+            'The pywin32 requirement was found in the compiled output\n{}'.format(compiled_contents)
