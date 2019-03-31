@@ -10,6 +10,7 @@
 # Import Python Libs
 from __future__ import absolute_import, print_function
 import os
+import re
 import sys
 import atexit
 import shutil
@@ -17,6 +18,8 @@ import logging
 import argparse
 import platform
 import tempfile
+import textwrap
+import functools
 import traceback
 from collections import namedtuple
 try:
@@ -26,21 +29,20 @@ except ImportError:
 
 CAPTURE_OUTPUT = os.environ.get('CAPTURE_OUTPUT', '1') == '1'
 
-if False:
-    logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
-
 # Import 3rd-party Libs
 import six
 
-# Import pip-tools Libs
-import piptools.locations
-PIP_TOOLS_CACHE_DIR = tempfile.mkdtemp(prefix='pip-tools-compile-cache-')
-# Make sure we cleanup after ourselves
-atexit.register(shutil.rmtree, PIP_TOOLS_CACHE_DIR, ignore_errors=True)
-# Switch to our temp cache dir
-piptools.locations.CACHE_DIR = PIP_TOOLS_CACHE_DIR
-import piptools.scripts.compile
+LOG_STREAM = six.StringIO()
+logging.basicConfig(level=logging.DEBUG, stream=LOG_STREAM)
 
+# Import pip-tools Libs
+# piptools.io needs to be imported early or once piptools imports it it might "think" it's on windows
+# when it's actually on Linux which will cause FS IO issue
+import piptools.io
+# Keep a reference to the original DependencyCache class
+from piptools.cache import DependencyCache
+
+# Import pip libs
 # Let's import get_supported because we need the returned value from the un-mocked function
 from pip._internal.pep425tags import get_supported
 
@@ -54,24 +56,22 @@ class ImpersonateSystem(object):
 
     __slots__ = ('_python_version_info')
 
-    def __init__(self, python_version_info=None):
-        if python_version_info:
-            parts = [int(part) for part in python_version_info.split('.') if part.isdigit()]
-            python_version_info = list(sys.version_info)
-            for idx, part in enumerate(parts):
-                python_version_info[idx] = part
-            python_version_info = version_info(*python_version_info)
+    def __init__(self, python_version_info, platform):
+        parts = [int(part) for part in python_version_info.split('.') if part.isdigit()]
+        python_version_info = list(sys.version_info)
+        for idx, part in enumerate(parts):
+            python_version_info[idx] = part
+        python_version_info = version_info(*python_version_info)
         self._python_version_info = python_version_info
+        self._platform = platform
 
     def get_mocks(self):
-        if self._python_version_info:
-            # We actually can't mock the next sys.version_info because that'll cause FS IO issues
-            # when running under py3 impersonating py2
-            #yield mock.patch('piptools.cache.sys.version_info',
-            #                 new_callable=mock.PropertyMock(return_value=self._python_version_info))
-            yield mock.patch('pip._internal.pep425tags.get_impl_version_info',
-                             return_value=self._python_version_info[:2])
-        raise StopIteration
+        yield mock.patch('piptools.resolver.DependencyCache',
+                         wraps=functools.partial(tweak_piptools_depcache_filename,
+                                                 self._python_version_info,
+                                                 self._platform))
+        yield mock.patch('pip._internal.pep425tags.get_impl_version_info',
+                         return_value=self._python_version_info[:2])
 
     def __enter__(self):
         for mock_obj in self.get_mocks():
@@ -80,6 +80,13 @@ class ImpersonateSystem(object):
 
     def __exit__(self, *args):
         mock.patch.stopall()
+
+
+def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
+    depcache = DependencyCache(*args, **kwargs)
+    depcache._cache_file = os.path.join(os.path.dirname(depcache._cache_file),
+                                        'depcache-{}-py{}.{}.json'.format(platform, *version_info))
+    return depcache
 
 
 def get_supported_with_fixed_unicode_width(*args, **kwargs):
@@ -191,53 +198,40 @@ class CatureSTDs(object):
         return self._stdout.read()
 
 
-def compile_requirement_file(fpath, options, unknown_args):
+def compile_requirement_file(source, dest, options, unknown_args):
 
-    impersonations = {
-        'darwin': ImpersonateDarwin,
-        'windows': ImpersonateWindows,
-        'linux': ImpersonateLinux
-    }
-
-    source_dir = os.path.dirname(fpath)
-    dest_dir = os.path.join(source_dir, 'py{}'.format(options.py_version))
-    if not os.path.isdir(dest_dir):
-        os.makedirs(dest_dir)
-    outfile = os.path.basename(fpath).replace('.in', '.txt')
-    if options.out_prefix:
-        outfile = '{}-{}'.format(options.out_prefix, outfile)
-    outfile_path = os.path.join(dest_dir, outfile)
-    call_args = ['pip-compile', '-o', outfile_path]
+    call_args = ['pip-compile', '-o', dest]
     if unknown_args:
         call_args += unknown_args
     if options.include:
         call_args += options.include
-    call_args.append(fpath)
+    call_args.append(source)
 
     original_sys_arg = sys.argv[:]
     try:
         print('Running: {}'.format(' '.join(call_args)))
         print('  Impersonating: {}'.format(options.platform))
         print('  Mocked Python Version: {}'.format(options.py_version))
-        with impersonations[options.platform](options.py_version):
-            sys.argv = call_args[:]
-            try:
-                piptools.scripts.compile.cli()
-            except SystemExit as exc:
-                if exc.code == 0:
-                    return True
-                print('Exception raised when processing {}'.format(fpath))
-                print(traceback.format_exc())
-                return False
-            except Exception:
-                print('Exception raised when processing {}'.format(fpath))
-                print(traceback.format_exc())
-                return False
+        sys.argv = call_args[:]
+        try:
+            import piptools.scripts.compile
+            piptools.scripts.compile.cli()
+        except SystemExit as exc:
+            if exc.code == 0:
+                return True
+            print('Exception raised when processing {}'.format(source))
+            print(traceback.format_exc())
+            return False
+        except Exception:
+            print('Exception raised when processing {}'.format(source))
+            print(traceback.format_exc())
+            return False
     finally:
         sys.argv = original_sys_arg
 
     # Flag success
     return True
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -249,22 +243,84 @@ def main():
     parser.add_argument('--py-version', default='{}.{}'.format(*sys.version_info))
     parser.add_argument('--include', action='append', default=[])
     parser.add_argument('--out-prefix', default=None)
+    parser.add_argument(
+        '--remove-line', default=[], action='append',
+        help='Python regular experession to search and remove from the compiled requirements and remove it'
+    )
     parser.add_argument('files', nargs='+')
 
     options, unknown_args = parser.parse_known_args()
 
+    impersonations = {
+        'darwin': ImpersonateDarwin,
+        'windows': ImpersonateWindows,
+        'linux': ImpersonateLinux
+    }
+
+    regexes = []
+    for regex in options.remove_line:
+        regexes.append(re.compile(regex))
+
     stdout = stderr = None
     exitcode = 0
-    with CatureSTDs() as capstds:
-        for fpath in options.files:
-            if not fpath.endswith('.in'):
-                continue
-            if not compile_requirement_file(fpath, options, unknown_args):
-                exitcode = 1
 
-        if exitcode:
-            stdout = capstds.stdout
-            stderr = capstds.stderr
+    with CatureSTDs() as capstds:
+        with impersonations[options.platform](options.py_version, options.platform):
+            import piptools.scripts.compile
+            for fpath in options.files:
+                if not fpath.endswith('.in'):
+                    continue
+
+                # Return the log strem to 0, either to write a log file in case of an error,
+                # or to overwrite the contents for this next fpath
+                LOG_STREAM.seek(0)
+
+                source_dir = os.path.dirname(fpath)
+                dest_dir = os.path.join(source_dir, 'py{}'.format(options.py_version))
+                if not os.path.isdir(dest_dir):
+                    os.makedirs(dest_dir)
+                outfile = os.path.basename(fpath).replace('.in', '.txt')
+                if options.out_prefix:
+                    outfile = '{}-{}'.format(options.out_prefix, outfile)
+                outfile_path = os.path.join(dest_dir, outfile)
+                if not compile_requirement_file(fpath, outfile_path, options, unknown_args):
+                    exitcode = 1
+                    error_logfile = outfile_path.replace('.txt', '.log')
+                    with open(error_logfile, 'w') as wfh:
+                        wfh.write(LOG_STREAM.read())
+                        LOG_STREAM.seek(0)
+                        print('Error log file at {}'.format(error_logfile))
+                    continue
+
+                if not regexes:
+                    continue
+
+                with open(outfile_path, 'r') as rfh:
+                    in_contents = rfh.read()
+
+                out_contents = []
+                for line in in_contents.splitlines():
+                    print('Processing line: {!r} // {}'.format(line, [r.pattern for r in regexes]))
+                    for regex in regexes:
+                        if regex.match(line):
+                            print("Line commented out by regex '{}': '{}'".format(regex.pattern, line))
+                            line = textwrap.dedent('''\
+                                # Next line explicitly commented out by {} because of the following regex: '{}'
+                                # {}'''.format(
+                                    os.path.basename(__file__),
+                                    regex.pattern,
+                                    line
+                                )
+                            )
+                            break
+                    out_contents.append(line)
+
+                with open(outfile_path, 'w') as wfh:
+                    wfh.write(os.linesep.join(out_contents) + os.linesep)
+
+            if exitcode:
+                stdout = capstds.stdout
+                stderr = capstds.stderr
 
     if stdout:
         sys.__stdout__.write(capstds.stdout)
