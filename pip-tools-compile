@@ -246,6 +246,7 @@ def main():
     )
     parser.add_argument('--py-version', default='{}.{}'.format(*sys.version_info))
     parser.add_argument('--include', action='append', default=[])
+    parser.add_argument('--output-dir', default=None)
     parser.add_argument('--out-prefix', default=None)
     parser.add_argument(
         '--remove-line', default=[], action='append',
@@ -280,7 +281,10 @@ def main():
                 LOG_STREAM.seek(0)
 
                 source_dir = os.path.dirname(fpath)
-                dest_dir = os.path.join(source_dir, 'py{}'.format(options.py_version))
+                if options.output_dir:
+                    dest_dir = output_dir
+                else:
+                    dest_dir = os.path.join(source_dir, 'py{}'.format(options.py_version))
                 if not os.path.isdir(dest_dir):
                     os.makedirs(dest_dir)
                 outfile = os.path.basename(fpath).replace('.in', '.txt')
