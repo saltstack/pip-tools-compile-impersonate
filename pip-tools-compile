@@ -33,7 +33,11 @@ CAPTURE_OUTPUT = os.environ.get('CAPTURE_OUTPUT', '1') == '1'
 import six
 
 LOG_STREAM = six.StringIO()
-logging.basicConfig(level=logging.DEBUG, stream=LOG_STREAM)
+logging.basicConfig(
+    level=logging.DEBUG,
+    stream=LOG_STREAM,
+    datefmt='%H:%M:%S',
+    format='%(asctime)s,%(msecs)03.0f [%(name)-5s:%(lineno)-4d][%(levelname)-8s] %(message)s')
 
 # Import pip-tools Libs
 # piptools.io needs to be imported early or once piptools imports it it might "think" it's on windows
