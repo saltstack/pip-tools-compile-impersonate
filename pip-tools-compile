@@ -51,7 +51,7 @@ from piptools.cache import DependencyCache
 from pip._internal.pep425tags import get_supported
 
 
-log = logging.getLogger(__name__)
+log = logging.getLogger(os.path.basename(__file__))
 
 version_info = namedtuple('version_info', ['major', 'minor', 'micro', 'releaselevel', 'serial'])
 
@@ -76,6 +76,8 @@ class ImpersonateSystem(object):
                                                  self._platform))
         yield mock.patch('pip._internal.pep425tags.get_impl_version_info',
                          return_value=self._python_version_info[:2])
+        yield mock.patch('pip._vendor.packaging.markers.platform.python_version',
+                         return_value='{}.{}.{}'.format(*self._python_version_info))
 
     def __enter__(self):
         for mock_obj in self.get_mocks():
@@ -88,8 +90,10 @@ class ImpersonateSystem(object):
 
 def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     depcache = DependencyCache(*args, **kwargs)
-    depcache._cache_file = os.path.join(os.path.dirname(depcache._cache_file),
-                                        'depcache-{}-py{}.{}.json'.format(platform, *version_info))
+    cache_file = os.path.join(os.path.dirname(depcache._cache_file),
+                              'depcache-{}-py{}.{}.json'.format(platform, *version_info))
+    log.info('Tweaking the pip-tools depcache file to: %s', cache_file)
+    depcache._cache_file = cache_file
     return depcache
 
 
@@ -203,6 +207,7 @@ class CatureSTDs(object):
 
 
 def compile_requirement_file(source, dest, options, unknown_args):
+    log.info('Compiling requirements to %s', dest)
 
     call_args = ['pip-compile', '-o', dest]
     if unknown_args:
@@ -217,6 +222,7 @@ def compile_requirement_file(source, dest, options, unknown_args):
         print('  Impersonating: {}'.format(options.platform))
         print('  Mocked Python Version: {}'.format(options.py_version))
         sys.argv = call_args[:]
+        log.debug('Switching sys.argv to: %s', sys.argv)
         try:
             import piptools.scripts.compile
             piptools.scripts.compile.cli()
@@ -231,6 +237,7 @@ def compile_requirement_file(source, dest, options, unknown_args):
             print(traceback.format_exc())
             return False
     finally:
+        log.info('Finished compiling %s', dest)
         sys.argv = original_sys_arg
 
     # Flag success

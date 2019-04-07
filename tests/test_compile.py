@@ -148,3 +148,34 @@ def test_pywin32(run_command, platform):
     else:
         assert 'pywin32==' not in compiled_contents, \
             'The pywin32 requirement was found in the compiled output\n{}'.format(compiled_contents)
+
+
+@pytest.mark.parametrize('platform', ['linux', 'darwin', 'windows'])
+def test_jsonschema(run_command, platform):
+    '''
+    jsonschema pulls in backports under py2, make sure that under py3 those don't end up in the final requirements
+    '''
+    input_requirement_name = 'jsonschema==2.6.0'
+    input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, '{}.in'.format(input_requirement_name))
+    with open(input_requirement, 'w') as wfh:
+        wfh.write(input_requirement_name + '\n')
+    compiled_requirements = os.path.join(
+        INPUT_REQUIREMENTS_DIR,
+        'py3.5',
+        '{}.txt'.format(input_requirement_name)
+    )
+    if os.path.exists(compiled_requirements):
+        os.unlink(compiled_requirements)
+    # Run it through pip-tools-compile
+    retcode = run_command(
+        'pip-tools-compile',
+        '-v',
+        '--py-version=3.5',
+        '--platform={}'.format(platform),
+        input_requirement
+    )
+    assert retcode == 0
+    with open(compiled_requirements) as crfh:
+        compiled_contents = crfh.read()
+
+    assert 'functools' not in compiled_contents
