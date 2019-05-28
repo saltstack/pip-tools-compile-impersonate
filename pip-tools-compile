@@ -76,6 +76,8 @@ class ImpersonateSystem(object):
                                                  self._platform))
         yield mock.patch('pip._internal.pep425tags.get_impl_version_info',
                          return_value=self._python_version_info[:2])
+        yield mock.patch('pip._internal.utils.packaging.sys.version_info',
+                         new_callable=mock.PropertyMock(return_value=self._python_version_info))
         yield mock.patch('pip._vendor.packaging.markers.platform.python_version',
                          return_value='{}.{}.{}'.format(*self._python_version_info))
 
