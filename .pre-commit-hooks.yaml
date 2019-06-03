@@ -3,6 +3,5 @@
   entry: pip-tools-compile
   language: python
   args: []
-  additional_dependencies:
-    - pip >= 19.0.3
+  additional_dependencies: []
   require_serial: true
