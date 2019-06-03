@@ -40,13 +40,12 @@ logging.basicConfig(
     format='%(asctime)s,%(msecs)03.0f [%(name)-5s:%(lineno)-4d][%(levelname)-8s] %(message)s')
 
 # Import pip-tools Libs
-# piptools.io needs to be imported early or once piptools imports it it might "think" it's on windows
-# when it's actually on Linux which will cause FS IO issue
-import piptools.io
 # Keep a reference to the original DependencyCache class
 from piptools.cache import DependencyCache
 
 # Import pip libs
+# We don't need Py2 vs Py3 encode/decode issues from pip
+import pip._internal.utils.misc
 # Let's import get_supported because we need the returned value from the un-mocked function
 from pip._internal.pep425tags import get_supported
 
