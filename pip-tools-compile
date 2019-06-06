@@ -203,8 +203,8 @@ class CatureSTDs(object):
 
     @property
     def stderr(self):
-        self._stdout.seek(0)
-        return self._stdout.read()
+        self._stderr.seek(0)
+        return self._stderr.read()
 
 
 def compile_requirement_file(source, dest, options, unknown_args):
@@ -230,8 +230,7 @@ def compile_requirement_file(source, dest, options, unknown_args):
         except SystemExit as exc:
             if exc.code == 0:
                 return True
-            print('Exception raised when processing {}'.format(source))
-            print(traceback.format_exc())
+            print('Failed to compile requirements. Exit code: {}'.format(exc.code))
             return False
         except Exception:
             print('Exception raised when processing {}'.format(source))
