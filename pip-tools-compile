@@ -210,11 +210,48 @@ class CatureSTDs(object):
 def compile_requirement_file(source, dest, options, unknown_args):
     log.info('Compiling requirements to %s', dest)
 
+    input_rewrites  = {}
+    passthrough_lines = {}
+
+    regexes = []
+    for regex in options.passthrough_line_from_input:
+        regexes.append(re.compile(regex))
+
     call_args = ['pip-compile', '-o', dest]
     if unknown_args:
         call_args += unknown_args
     if options.include:
-        call_args += options.include
+        includes = []
+        for input_file in options.include:
+            out_contents = []
+            with open(input_file) as rfh:
+                in_contents = rfh.read()
+                for line in in_contents.splitlines():
+                    match_found = False
+                    for regex in regexes:
+                        if match_found:
+                            break
+                        if regex.match(line):
+                            match_found = True
+                            if input_file not in input_rewrites:
+                                temp_reqs_file = tempfile.NamedTemporaryFile(delete=False)
+                                temp_reqs_file.close()
+                                input_rewrites[input_file] = temp_reqs_file.name
+                            if input_file not in passthrough_lines:
+                                passthrough_lines[input_file] = []
+                    if match_found:
+                        passthrough_lines[input_file].append(line)
+                        # Skip this line
+                        continue
+                    out_contents.append(line)
+            if input_file in input_rewrites:
+                with open(input_rewrites[input_file], 'w') as wfh:
+                    for line in out_contents:
+                        wfh.write('{}\n'.format(line))
+                includes.append(input_rewrites[input_file])
+            else:
+                includes.append(input_file)
+        call_args += includes
     call_args.append(source)
 
     original_sys_arg = sys.argv[:]
@@ -238,6 +275,27 @@ def compile_requirement_file(source, dest, options, unknown_args):
             return False
     finally:
         log.info('Finished compiling %s', dest)
+
+        if input_rewrites:
+            with open(dest) as rfh:
+                dest_contents = rfh.read()
+
+            for input_file, rewriten_file in input_rewrites.items():
+                if rewriten_file in dest_contents:
+                    dest_contents = dest_contents.replace(rewriten_file, input_file)
+
+                try:
+                    os.unlink(rewriten_file)
+                except OSError:
+                    pass
+
+            with open(dest, 'w') as wfh:
+                wfh.write(dest_contents)
+                for input_file, lines in passthrough_lines.items():
+                    wfh.write('# Passthrough dependencies from {}\n'.format(input_file))
+                    for line in lines:
+                        wfh.write('{}\n'.format(line))
+
         sys.argv = original_sys_arg
 
     # Flag success
@@ -258,6 +316,10 @@ def main():
     parser.add_argument(
         '--remove-line', default=[], action='append',
         help='Python regular experession to search and remove from the compiled requirements and remove it'
+    )
+    parser.add_argument(
+        '--passthrough-line-from-input', default=[], action='append',
+        help='Python regular experession to search and remove from the input requirements and append in the destination requirements file'
     )
     parser.add_argument('files', nargs='+')
 
