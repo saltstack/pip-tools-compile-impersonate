@@ -12,8 +12,6 @@ from __future__ import absolute_import, print_function
 import os
 import re
 import sys
-import atexit
-import shutil
 import logging
 import argparse
 import platform
