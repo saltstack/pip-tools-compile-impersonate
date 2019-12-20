@@ -19,7 +19,7 @@ if __name__ == '__main__':
 # Import 3rd-party libs
 import nox
 
-PYTHON_VERSIONS = ('2.7', '3.4', '3.5', '3.6')
+PYTHON_VERSIONS = ('2.7', '3.4', '3.5', '3.6', '3.7', '3.8')
 
 
 @nox.session(python=PYTHON_VERSIONS)
