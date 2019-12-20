@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [2.7, 3.5, 3.6, 3.7, 3.8]
+        python-version: [2.7, 3.5, 3.6]
 
     steps:
     - uses: actions/checkout@v1
@@ -18,18 +18,16 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Prep System
       run: |
-        python -m pip install --ignore-installed pip==19.1
-        python -m pip --version
         python -m pip install nox-py2
     - name: Test
       run: |
-        nox --forcecolor -e tests-system
+        nox --forcecolor -e tests-${{ matrix.python-version }}
 
   MacOS:
     runs-on: macos-latest
     strategy:
       matrix:
-        python-version: [2.7, 3.5, 3.6, 3.7, 3.8]
+        python-version: [2.7, 3.5, 3.6]
 
     steps:
     - uses: actions/checkout@v1
@@ -39,18 +37,16 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Prep System
       run: |
-        python -m pip install --ignore-installed pip==19.1
-        python -m pip --version
         python -m pip install nox-py2
     - name: Test
       run: |
-        nox --forcecolor -e tests-system
+        nox --forcecolor -e tests-${{ matrix.python-version }}
 
   Windows:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: [2.7, 3.5, 3.6, 3.7, 3.8]
+        python-version: [2.7, 3.5, 3.6]
 
     steps:
     - uses: actions/checkout@v1
@@ -60,9 +56,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Prep System
       run: |
-        python -m pip install --ignore-installed pip==19.1
-        python -m pip --version
         python -m pip install nox-py2
     - name: Test
       run: |
-        nox --forcecolor -e tests-system
+        nox --forcecolor -e tests-${{ matrix.python-version }}
