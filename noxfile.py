@@ -31,6 +31,7 @@ def tests(session):
 
 @nox.session(python=False, name='tests-system')
 def tests_system(session):
+    session.run('python', '-m', 'pip', 'install', '--ignore-installed', '--disable-pip-version-check', 'pip==19.1')
     session.run('python', '-m', 'pip', 'install', '-e', '.')
     session.run('python', '-m', 'pip', 'install', 'pytest')
     session.run('python', '-m', 'pytest', '-ra', '-s', '-vv', 'tests', *session.posargs)
