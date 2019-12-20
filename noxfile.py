@@ -8,8 +8,7 @@ Nox configuration script
 
 # Import Python libs
 from __future__ import absolute_import, unicode_literals, print_function
-import os
-
+import sys
 
 if __name__ == '__main__':
     sys.stderr.write('Do not execute this file directly. Use nox instead, it will know how to handle this file\n')
@@ -27,10 +26,14 @@ nox.options.reuse_existing_virtualenvs = True
 #  Don't fail on missing interpreters
 nox.options.error_on_missing_interpreters = False
 
+IS_WINDOWS = sys.platform.lower().startswith('win')
 
 @nox.session(python=PYTHON_VERSIONS)
 def tests(session):
-    session.install('-e', '.')
+    if IS_WINDOWS:
+        session.run('python', '-m', 'pip', 'install', '-e', '.')
+    else:
+        session.install('-e', '.')
     session.install('pytest')
     session.run('pytest', '-ra', '-s', '-vv', 'tests', *session.posargs)
 
