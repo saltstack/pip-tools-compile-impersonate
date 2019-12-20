@@ -133,7 +133,7 @@ class ImpersonateDarwin(ImpersonateSystem):
         # We don't want pip trying query python's internals, it knows how to mock that internal information
         yield mock.patch('pip._internal.pep425tags.get_config_var', return_value=None)
         # Impersonate Windows 32
-        yield mock.patch('pip._internal.pep425tags.get_platform', return_value='darwin')
+        yield mock.patch('pip._internal.pep425tags.get_platform', return_value='macosx_10_15_x86_64')
         # Wrap get_supported in out own function call to fix unicode width issues
         yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
         yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
@@ -141,10 +141,10 @@ class ImpersonateDarwin(ImpersonateSystem):
         yield mock.patch('pip._vendor.packaging.markers.os.name', new_callable=mock.PropertyMock(return_value='posix'))
         yield mock.patch('pip._vendor.packaging.markers.sys.platform', new_callable=mock.PropertyMock(return_value='darwin'))
         yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='x86_64')
-        yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='18.5.0')
+        yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='19.2.0')
         yield mock.patch('pip._vendor.packaging.markers.platform.system', return_value='Darwin')
         yield mock.patch('pip._vendor.packaging.markers.platform.version',
-                         return_value='Darwin Kernel Version 18.5.0: Mon Mar 11 20:40:32 PDT 2019; root:xnu-4903.251.3~3/RELEASE_X86_64')
+                         return_value='Darwin Kernel Version 19.2.0: Sat Nov  9 03:47:04 PST 2019; root:xnu-6153.61.1~20/RELEASE_X86_64')
         yield mock.patch('pip._vendor.packaging.markers.platform.python_version', return_value='{}.{}.{}'.format(*self._python_version_info))
 
 
@@ -162,7 +162,7 @@ class ImpersonateLinux(ImpersonateSystem):
         yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
         # Patch pip's vendored packaging markers
         yield mock.patch('pip._vendor.packaging.markers.sys.platform',
-                new_callable=mock.PropertyMock(return_value='linux{}'.format('2' if self._python_version_info[0] == 2 else '')))
+                         new_callable=mock.PropertyMock(return_value='linux{}'.format('2' if self._python_version_info[0] == 2 else '')))
         yield mock.patch('pip._vendor.packaging.markers.os.name', new_callable=mock.PropertyMock(return_value='posix'))
         yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='x86_64')
         yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='4.19.29-1-lts')
