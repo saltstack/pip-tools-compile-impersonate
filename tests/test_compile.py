@@ -179,3 +179,42 @@ def test_jsonschema(run_command, platform):
         compiled_contents = crfh.read()
 
     assert 'functools' not in compiled_contents
+
+
+@pytest.mark.parametrize('platform', ['linux', 'darwin', 'windows'])
+def test_pyobjc(run_command, platform):
+    '''
+    pyobjc has been an issue when mocking the requirements file compilation. test it.
+    '''
+    input_requirement_name = 'pyobjc-req'
+    input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, '{}.in'.format(input_requirement_name))
+    with open(input_requirement, 'w') as wfh:
+        wfh.write(textwrap.dedent('''\
+            pep8
+            pyobjc==5.1.2; sys.platform == 'darwin'
+            '''
+            )
+        )
+    compiled_requirements = os.path.join(
+        INPUT_REQUIREMENTS_DIR,
+        'py{}.{}'.format(*sys.version_info),
+        '{}.txt'.format(input_requirement_name)
+    )
+    if os.path.exists(compiled_requirements):
+        os.unlink(compiled_requirements)
+    # Run it through pip-tools-compile
+    retcode = run_command(
+        'pip-tools-compile',
+        '-v',
+        '--platform={}'.format(platform),
+        input_requirement
+    )
+    assert retcode == 0
+    with open(compiled_requirements) as crfh:
+        compiled_contents = crfh.read()
+    if platform == 'darwin':
+        assert 'pyobjc==' in compiled_contents, \
+            'The pyobjc requirement was not found in the compiled output\n{}'.format(compiled_contents)
+    else:
+        assert 'pyobjc==' not in compiled_contents, \
+            'The pyobjc requirement was found in the compiled output\n{}'.format(compiled_contents)
