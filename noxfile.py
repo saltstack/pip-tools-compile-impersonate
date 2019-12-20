@@ -21,6 +21,12 @@ import nox
 
 PYTHON_VERSIONS = ('2.7', '3.4', '3.5', '3.6', '3.7', '3.8')
 
+# Nox options
+#  Reuse existing virtualenvs
+nox.options.reuse_existing_virtualenvs = True
+#  Don't fail on missing interpreters
+nox.options.error_on_missing_interpreters = False
+
 
 @nox.session(python=PYTHON_VERSIONS)
 def tests(session):
