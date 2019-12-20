@@ -44,6 +44,8 @@ from piptools.cache import DependencyCache
 # Import pip libs
 # We don't need Py2 vs Py3 encode/decode issues from pip
 import pip._internal.utils.misc
+real_version_info = sys.version_info
+
 # Let's import get_supported because we need the returned value from the un-mocked function
 from pip._internal.pep425tags import get_supported
 
@@ -67,6 +69,8 @@ class ImpersonateSystem(object):
         self._platform = platform
 
     def get_mocks(self):
+        yield mock.patch('pip._internal.utils.misc.sys.version_info',
+                         new_callable=mock.PropertyMock(return_value=real_version_info))
         yield mock.patch('piptools.resolver.DependencyCache',
                          wraps=functools.partial(tweak_piptools_depcache_filename,
                                                  self._python_version_info,
@@ -253,48 +257,50 @@ def compile_requirement_file(source, dest, options, unknown_args):
     call_args.append(source)
 
     original_sys_arg = sys.argv[:]
-    try:
-        print('Running: {}'.format(' '.join(call_args)))
-        print('  Impersonating: {}'.format(options.platform))
-        print('  Mocked Python Version: {}'.format(options.py_version))
-        sys.argv = call_args[:]
-        log.debug('Switching sys.argv to: %s', sys.argv)
+    with mock.patch('pip._internal.utils.misc.sys.version_info',
+                    new_callable=mock.PropertyMock(return_value=real_version_info)):
         try:
-            import piptools.scripts.compile
-            piptools.scripts.compile.cli()
-        except SystemExit as exc:
-            if exc.code == 0:
-                return True
-            print('Failed to compile requirements. Exit code: {}'.format(exc.code))
-            return False
-        except Exception:
-            print('Exception raised when processing {}'.format(source))
-            print(traceback.format_exc())
-            return False
-    finally:
-        log.info('Finished compiling %s', dest)
+            print('Running: {}'.format(' '.join(call_args)))
+            print('  Impersonating: {}'.format(options.platform))
+            print('  Mocked Python Version: {}'.format(options.py_version))
+            sys.argv = call_args[:]
+            log.debug('Switching sys.argv to: %s', sys.argv)
+            try:
+                import piptools.scripts.compile
+                piptools.scripts.compile.cli()
+            except SystemExit as exc:
+                if exc.code == 0:
+                    return True
+                print('Failed to compile requirements. Exit code: {}'.format(exc.code))
+                return False
+            except Exception:
+                print('Exception raised when processing {}'.format(source))
+                print(traceback.format_exc())
+                return False
+        finally:
+            log.info('Finished compiling %s', dest)
 
-        if input_rewrites:
-            with open(dest) as rfh:
-                dest_contents = rfh.read()
+            if input_rewrites:
+                with open(dest) as rfh:
+                    dest_contents = rfh.read()
 
-            for input_file, rewriten_file in input_rewrites.items():
-                if rewriten_file in dest_contents:
-                    dest_contents = dest_contents.replace(rewriten_file, input_file)
+                for input_file, rewriten_file in input_rewrites.items():
+                    if rewriten_file in dest_contents:
+                        dest_contents = dest_contents.replace(rewriten_file, input_file)
 
-                try:
-                    os.unlink(rewriten_file)
-                except OSError:
-                    pass
+                    try:
+                        os.unlink(rewriten_file)
+                    except OSError:
+                        pass
 
-            with open(dest, 'w') as wfh:
-                wfh.write(dest_contents)
-                for input_file, lines in passthrough_lines.items():
-                    wfh.write('# Passthrough dependencies from {}\n'.format(input_file))
-                    for line in lines:
-                        wfh.write('{}\n'.format(line))
+                with open(dest, 'w') as wfh:
+                    wfh.write(dest_contents)
+                    for input_file, lines in passthrough_lines.items():
+                        wfh.write('# Passthrough dependencies from {}\n'.format(input_file))
+                        for line in lines:
+                            wfh.write('{}\n'.format(line))
 
-        sys.argv = original_sys_arg
+            sys.argv = original_sys_arg
 
     # Flag success
     return True
