@@ -1,0 +1,64 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+
+  Linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [2.7, 3.4, 3.5, 3.6, 3.7, 3.8]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install Nox
+      run: |
+        python -m pip install nox
+    - name: Test
+      run: |
+        nox -e tests-${{ matrix.python-version }}
+
+  MacOS:
+    needs: Linting
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python-version: [2.7, 3.4, 3.5, 3.6, 3.7, 3.8]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install Nox
+      run: |
+        python -m pip install nox
+    - name: Test
+      run: |
+        nox -e tests-${{ matrix.python-version }}
+
+  Windows:
+    needs: Linting
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: [2.7, 3.4, 3.5, 3.6, 3.7, 3.8]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install Nox
+      run: |
+        python -m pip install nox
+    - name: Test
+      run: |
+        nox -e tests-${{ matrix.python-version }}
