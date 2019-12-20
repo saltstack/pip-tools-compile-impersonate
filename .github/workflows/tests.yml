@@ -21,7 +21,7 @@ jobs:
         python -m pip install nox-py2
     - name: Test
       run: |
-        nox -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-system
 
   MacOS:
     runs-on: macos-latest
@@ -40,7 +40,7 @@ jobs:
         python -m pip install nox-py2
     - name: Test
       run: |
-        nox -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-system
 
   Windows:
     runs-on: windows-latest
@@ -59,4 +59,4 @@ jobs:
         python -m pip install nox-py2
     - name: Test
       run: |
-        nox -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-system

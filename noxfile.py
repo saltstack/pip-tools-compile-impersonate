@@ -27,3 +27,10 @@ def tests(session):
     session.install('-e', '.')
     session.install('pytest')
     session.run('pytest', '-ra', '-s', '-vv', 'tests', *session.posargs)
+
+
+@nox.session(python=False, name='tests-system')
+def tests_system(session):
+    session.install('-e', '.')
+    session.install('pytest')
+    session.run('pytest', '-ra', '-s', '-vv', 'tests', *session.posargs)
