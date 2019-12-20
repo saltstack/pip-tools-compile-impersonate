@@ -55,7 +55,7 @@ version_info = namedtuple('version_info', ['major', 'minor', 'micro', 'releasele
 
 class ImpersonateSystem(object):
 
-    __slots__ = ('_python_version_info')
+    __slots__ = ('_python_version_info', '_platform')
 
     def __init__(self, python_version_info, platform):
         parts = [int(part) for part in python_version_info.split('.') if part.isdigit()]
