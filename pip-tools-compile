@@ -300,8 +300,54 @@ def compile_requirement_file(source, dest, options, unknown_args):
     return True
 
 
+def show_info_to_patch():
+    import pprint
+    import platform
+    print('Generating information under {}\n'.format(platform.system()))
+    patch_data = (
+        ('pip._internal.pep425tags', 'get_impl_version_info'),
+        ('pip._internal.utils.packaging', 'sys.version_info'),
+        ('pip._vendor.packaging.markers', 'platform.python_version'),
+        ('pip._internal.pep425tags', 'get_platform'),
+        ('pip._internal.pep425tags', 'get_supported'),
+        ('pip._internal.index', 'get_supported'),
+        ('pip._vendor.packaging.markers', 'os.name'),
+        ('pip._vendor.packaging.markers', 'sys.platform'),
+        ('pip._vendor.packaging.markers', 'platform.machine'),
+        ('pip._vendor.packaging.markers', 'platform.release'),
+        ('pip._vendor.packaging.markers', 'platform.system'),
+        ('pip._vendor.packaging.markers', 'platform.version'),
+        )
+    real_data = {}
+    for module, function in patch_data:
+        if module not in real_data:
+            real_data[module] = {}
+        mod = __import__(module)
+        mod_parts = module.split('.')
+        mod_parts.pop(0)
+        while mod_parts:
+            part = mod_parts.pop(0)
+            mod = getattr(mod, part)
+        func_parts = function.split('.')
+        func = mod
+        while func_parts:
+            part = func_parts.pop(0)
+            func = getattr(func, part)
+        data = func
+        if callable(data):
+            data = data()
+        real_data[module][function] = data
+
+    pprint.pprint(real_data)
+
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--show-info-to-patch',
+        action='store_true',
+        help='Print out the information we require to patch the multiple platforms'
+    )
     parser.add_argument(
         '--platform',
         choices=('windows', 'darwin', 'linux'),
@@ -319,9 +365,16 @@ def main():
         '--passthrough-line-from-input', default=[], action='append',
         help='Python regular experession to search and remove from the input requirements and append in the destination requirements file'
     )
-    parser.add_argument('files', nargs='+')
+    parser.add_argument('files', nargs='*')
 
     options, unknown_args = parser.parse_known_args()
+
+    if options.show_info_to_patch:
+        show_info_to_patch()
+        parser.exit(0)
+
+    if not options.files:
+        parser.exit(2, 'Please pass at least one requirement file')
 
     impersonations = {
         'darwin': ImpersonateDarwin,
