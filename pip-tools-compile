@@ -226,6 +226,7 @@ def compile_requirement_file(source, dest, options, unknown_args):
         includes = []
         for input_file in options.include:
             out_contents = []
+            input_file = input_file.format(py_version=options.py_version)
             with open(input_file) as rfh:
                 in_contents = rfh.read()
                 for line in in_contents.splitlines():
