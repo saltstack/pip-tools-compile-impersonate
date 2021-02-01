@@ -12,10 +12,11 @@ from __future__ import absolute_import, print_function
 import os
 import re
 import sys
+import atexit
+import shutil
 import logging
 import argparse
 import platform
-import tempfile
 import textwrap
 import functools
 import traceback
@@ -229,24 +230,24 @@ def compile_requirement_file(source, dest, options, unknown_args):
             input_file = input_file.format(py_version=options.py_version)
             with open(input_file) as rfh:
                 in_contents = rfh.read()
-                for line in in_contents.splitlines():
-                    match_found = False
-                    for regex in regexes:
-                        if match_found:
-                            break
-                        if regex.match(line):
-                            match_found = True
-                            if input_file not in input_rewrites:
-                                temp_reqs_file = tempfile.NamedTemporaryFile(delete=False)
-                                temp_reqs_file.close()
-                                input_rewrites[input_file] = temp_reqs_file.name
-                            if input_file not in passthrough_lines:
-                                passthrough_lines[input_file] = []
+            for line in in_contents.splitlines():
+                match_found = False
+                for regex in regexes:
                     if match_found:
-                        passthrough_lines[input_file].append(line)
-                        # Skip this line
-                        continue
-                    out_contents.append(line)
+                        break
+                    if regex.match(line):
+                        match_found = True
+                        if input_file not in input_rewrites:
+                            input_rewrites[input_file] = input_file
+                            shutil.move(input_file, input_file + ".bak")
+                            atexit.register(shutil.move, input_file + ".bak", input_file)
+                        if input_file not in passthrough_lines:
+                            passthrough_lines[input_file] = []
+                if match_found:
+                    passthrough_lines[input_file].append(line)
+                    # Skip this line
+                    continue
+                out_contents.append(line)
             if input_file in input_rewrites:
                 with open(input_rewrites[input_file], 'w') as wfh:
                     for line in out_contents:
