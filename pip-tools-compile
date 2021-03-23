@@ -1,32 +1,30 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-'''
+"""
     pip-tools-compile
     ~~~~~~~~~~~~~~~~~
 
     Wrapper around pip-tools to "impersonate" different distributions when compiling requirements
-'''
-
+"""
 # Import Python Libs
-from __future__ import absolute_import, print_function
-import os
-import re
-import sys
-import atexit
-import shutil
-import logging
 import argparse
-import platform
-import textwrap
+import atexit
 import functools
+import logging
+import os
+import platform
+import re
+import shutil
+import sys
+import textwrap
 import traceback
 from collections import namedtuple
+
 try:
     from unittest import mock
 except ImportError:
-    import mock
+    from unittest import mock
 
-CAPTURE_OUTPUT = os.environ.get('CAPTURE_OUTPUT', '1') == '1'
+CAPTURE_OUTPUT = os.environ.get("CAPTURE_OUTPUT", "1") == "1"
 
 # Import 3rd-party Libs
 import six
@@ -35,8 +33,9 @@ LOG_STREAM = six.StringIO()
 logging.basicConfig(
     level=logging.DEBUG,
     stream=LOG_STREAM,
-    datefmt='%H:%M:%S',
-    format='%(asctime)s,%(msecs)03.0f [%(name)-5s:%(lineno)-4d][%(levelname)-8s] %(message)s')
+    datefmt="%H:%M:%S",
+    format="%(asctime)s,%(msecs)03.0f [%(name)-5s:%(lineno)-4d][%(levelname)-8s] %(message)s",
+)
 
 # Import pip-tools Libs
 # Keep a reference to the original DependencyCache class
@@ -45,23 +44,21 @@ from piptools.cache import DependencyCache
 # Import pip libs
 # We don't need Py2 vs Py3 encode/decode issues from pip
 import pip._internal.utils.misc
-real_version_info = sys.version_info
 
-# Let's import get_supported because we need the returned value from the un-mocked function
-from pip._internal.pep425tags import get_supported
+real_version_info = sys.version_info
 
 
 log = logging.getLogger(os.path.basename(__file__))
 
-version_info = namedtuple('version_info', ['major', 'minor', 'micro', 'releaselevel', 'serial'])
+version_info = namedtuple("version_info", ["major", "minor", "micro", "releaselevel", "serial"])
 
 
-class ImpersonateSystem(object):
+class ImpersonateSystem:
 
-    __slots__ = ('_python_version_info', '_platform')
+    __slots__ = ("_python_version_info", "_platform")
 
     def __init__(self, python_version_info, platform):
-        parts = [int(part) for part in python_version_info.split('.') if part.isdigit()]
+        parts = [int(part) for part in python_version_info.split(".") if part.isdigit()]
         python_version_info = list(sys.version_info)
         for idx, part in enumerate(parts):
             python_version_info[idx] = part
@@ -70,18 +67,20 @@ class ImpersonateSystem(object):
         self._platform = platform
 
     def get_mocks(self):
-        yield mock.patch('pip._internal.utils.misc.sys.version_info',
-                         new_callable=mock.PropertyMock(return_value=real_version_info))
-        yield mock.patch('piptools.resolver.DependencyCache',
-                         wraps=functools.partial(tweak_piptools_depcache_filename,
-                                                 self._python_version_info,
-                                                 self._platform))
-        yield mock.patch('pip._internal.pep425tags.get_impl_version_info',
-                         return_value=self._python_version_info[:2])
-        yield mock.patch('pip._internal.utils.packaging.sys.version_info',
-                         new_callable=mock.PropertyMock(return_value=self._python_version_info))
-        yield mock.patch('pip._vendor.packaging.markers.platform.python_version',
-                         return_value='{}.{}.{}'.format(*self._python_version_info))
+        yield mock.patch(
+            "pip._internal.utils.misc.sys.version_info",
+            new_callable=mock.PropertyMock(return_value=real_version_info),
+        )
+        yield mock.patch(
+            "piptools.scripts.compile.DependencyCache",
+            wraps=functools.partial(
+                tweak_piptools_depcache_filename, self._python_version_info, self._platform
+            ),
+        )
+        yield mock.patch(
+            "pip._vendor.packaging.markers.platform.python_version",
+            return_value="{}.{}.{}".format(*self._python_version_info),
+        )
 
     def __enter__(self):
         for mock_obj in self.get_mocks():
@@ -94,91 +93,97 @@ class ImpersonateSystem(object):
 
 def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     depcache = DependencyCache(*args, **kwargs)
-    cache_file = os.path.join(os.path.dirname(depcache._cache_file),
-                              'depcache-{}-py{}.{}.json'.format(platform, *version_info))
-    log.info('Tweaking the pip-tools depcache file to: %s', cache_file)
+    cache_file = os.path.join(
+        os.path.dirname(depcache._cache_file),
+        "depcache-{}-py{}.{}.json".format(platform, *version_info),
+    )
+    log.info("Tweaking the pip-tools depcache file to: %s", cache_file)
     depcache._cache_file = cache_file
     return depcache
 
 
-def get_supported_with_fixed_unicode_width(*args, **kwargs):
-    supported = get_supported(*args, **kwargs)
-    for version, abi, arch in supported[:]:
-        if abi.endswith('u'):
-            supported.append((version, abi[:-1], arch))
-    return supported
-
-
 class ImpersonateWindows(ImpersonateSystem):
-
     def get_mocks(self):
-        for entry in super(ImpersonateWindows, self).get_mocks():
-            yield entry
+        yield from super().get_mocks()
         # We don't want pip trying query python's internals, it knows how to mock that internal information
-        yield mock.patch('pip._internal.pep425tags.get_config_var', return_value=None)
-        # Impersonate Windows 32
-        yield mock.patch('pip._internal.pep425tags.get_platform', return_value='win32')
-        # Wrap get_supported in out own function call to fix unicode width issues
-        yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
-        yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
-        # Patch pip's vendored packaging markers
-        yield mock.patch('pip._vendor.packaging.markers.os.name', new_callable=mock.PropertyMock(return_value='nt'))
-        yield mock.patch('pip._vendor.packaging.markers.sys.platform', new_callable=mock.PropertyMock(return_value='win32'))
-        yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='AMD64')
-        yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='8.1')
-        yield mock.patch('pip._vendor.packaging.markers.platform.system', return_value='Windows')
-        yield mock.patch('pip._vendor.packaging.markers.platform.version', return_value='6.3.9600')
+        yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
+        ## Patch pip's vendored packaging markers
+        yield mock.patch(
+            "pip._vendor.packaging.markers.os.name",
+            new_callable=mock.PropertyMock(return_value="nt"),
+        )
+        yield mock.patch(
+            "pip._vendor.packaging.markers.sys.platform",
+            new_callable=mock.PropertyMock(return_value="win32"),
+        )
+        yield mock.patch("pip._vendor.packaging.markers.platform.machine", return_value="AMD64")
+        yield mock.patch("pip._vendor.packaging.markers.platform.release", return_value="8.1")
+        yield mock.patch("pip._vendor.packaging.markers.platform.system", return_value="Windows")
+        yield mock.patch("pip._vendor.packaging.markers.platform.version", return_value="6.3.9600")
 
 
 class ImpersonateDarwin(ImpersonateSystem):
-
     def get_mocks(self):
-        for entry in super(ImpersonateDarwin, self).get_mocks():
-            yield entry
+        yield from super().get_mocks()
         # We don't want pip trying query python's internals, it knows how to mock that internal information
-        yield mock.patch('pip._internal.pep425tags.get_config_var', return_value=None)
-        # Impersonate Windows 32
-        yield mock.patch('pip._internal.pep425tags.get_platform', return_value='macosx_10_15_x86_64')
-        # Wrap get_supported in out own function call to fix unicode width issues
-        yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
-        yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
+        yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
+        yield mock.patch(
+            "pip._vendor.packaging.tags.platform.mac_ver", return_value=("10.15", None, "x86_64")
+        )
         # Patch pip's vendored packaging markers
-        yield mock.patch('pip._vendor.packaging.markers.os.name', new_callable=mock.PropertyMock(return_value='posix'))
-        yield mock.patch('pip._vendor.packaging.markers.sys.platform', new_callable=mock.PropertyMock(return_value='darwin'))
-        yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='x86_64')
-        yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='19.2.0')
-        yield mock.patch('pip._vendor.packaging.markers.platform.system', return_value='Darwin')
-        yield mock.patch('pip._vendor.packaging.markers.platform.version',
-                         return_value='Darwin Kernel Version 19.2.0: Sat Nov  9 03:47:04 PST 2019; root:xnu-6153.61.1~20/RELEASE_X86_64')
-        yield mock.patch('pip._vendor.packaging.markers.platform.python_version', return_value='{}.{}.{}'.format(*self._python_version_info))
+        yield mock.patch(
+            "pip._vendor.packaging.markers.os.name",
+            new_callable=mock.PropertyMock(return_value="posix"),
+        )
+        yield mock.patch(
+            "pip._vendor.packaging.markers.sys.platform",
+            new_callable=mock.PropertyMock(return_value="darwin"),
+        )
+        yield mock.patch("pip._vendor.packaging.markers.platform.machine", return_value="x86_64")
+        yield mock.patch("pip._vendor.packaging.markers.platform.release", return_value="19.2.0")
+        yield mock.patch("pip._vendor.packaging.markers.platform.system", return_value="Darwin")
+        yield mock.patch(
+            "pip._vendor.packaging.markers.platform.version",
+            return_value="Darwin Kernel Version 19.2.0: Sat Nov  9 03:47:04 PST 2019; root:xnu-6153.61.1~20/RELEASE_X86_64",
+        )
+        yield mock.patch(
+            "pip._vendor.packaging.markers.platform.python_version",
+            return_value="{}.{}.{}".format(*self._python_version_info),
+        )
 
 
 class ImpersonateLinux(ImpersonateSystem):
-
     def get_mocks(self):
-        for entry in super(ImpersonateLinux, self).get_mocks():
-            yield entry
+        yield from super().get_mocks()
         # We don't want pip trying query python's internals, it knows how to mock that internal information
-        yield mock.patch('pip._internal.pep425tags.get_config_var', return_value=None)
-        # Impersonate Windows 32
-        yield mock.patch('pip._internal.pep425tags.get_platform', return_value='linux2')
-        # Wrap get_supported in out own function call to fix unicode width issues
-        yield mock.patch('pip._internal.pep425tags.get_supported', wraps=get_supported_with_fixed_unicode_width)
-        yield mock.patch('pip._internal.index.get_supported', wraps=get_supported_with_fixed_unicode_width)
+        yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
         # Patch pip's vendored packaging markers
-        yield mock.patch('pip._vendor.packaging.markers.sys.platform',
-                         new_callable=mock.PropertyMock(return_value='linux{}'.format('2' if self._python_version_info[0] == 2 else '')))
-        yield mock.patch('pip._vendor.packaging.markers.os.name', new_callable=mock.PropertyMock(return_value='posix'))
-        yield mock.patch('pip._vendor.packaging.markers.platform.machine', return_value='x86_64')
-        yield mock.patch('pip._vendor.packaging.markers.platform.release', return_value='4.19.29-1-lts')
-        yield mock.patch('pip._vendor.packaging.markers.platform.system', return_value='Linux')
-        yield mock.patch('pip._vendor.packaging.markers.platform.version', return_value='#1 SMP Thu Mar 14 15:39:08 CET 2019')
-        yield mock.patch('pip._vendor.packaging.markers.platform.python_version', return_value='{}.{}.{}'.format(*self._python_version_info))
+        yield mock.patch(
+            "pip._vendor.packaging.markers.sys.platform",
+            new_callable=mock.PropertyMock(
+                return_value="linux{}".format("2" if self._python_version_info[0] == 2 else "")
+            ),
+        )
+        yield mock.patch(
+            "pip._vendor.packaging.markers.os.name",
+            new_callable=mock.PropertyMock(return_value="posix"),
+        )
+        yield mock.patch("pip._vendor.packaging.markers.platform.machine", return_value="x86_64")
+        yield mock.patch(
+            "pip._vendor.packaging.markers.platform.release", return_value="4.19.29-1-lts"
+        )
+        yield mock.patch("pip._vendor.packaging.markers.platform.system", return_value="Linux")
+        yield mock.patch(
+            "pip._vendor.packaging.markers.platform.version",
+            return_value="#1 SMP Thu Mar 14 15:39:08 CET 2019",
+        )
+        yield mock.patch(
+            "pip._vendor.packaging.markers.platform.python_version",
+            return_value="{}.{}.{}".format(*self._python_version_info),
+        )
 
 
-
-class CatureSTDs(object):
-
+class CatureSTDs:
     def __init__(self):
         self._stdout = six.StringIO()
         self._stderr = six.StringIO()
@@ -211,16 +216,16 @@ class CatureSTDs(object):
 
 
 def compile_requirement_file(source, dest, options, unknown_args):
-    log.info('Compiling requirements to %s', dest)
+    log.info("Compiling requirements to %s", dest)
 
-    input_rewrites  = {}
+    input_rewrites = {}
     passthrough_lines = {}
 
     regexes = []
     for regex in options.passthrough_line_from_input:
         regexes.append(re.compile(regex))
 
-    call_args = ['pip-compile', '-o', dest]
+    call_args = ["pip-compile", "-o", dest]
     if unknown_args:
         call_args += unknown_args
     if options.include:
@@ -249,9 +254,9 @@ def compile_requirement_file(source, dest, options, unknown_args):
                     continue
                 out_contents.append(line)
             if input_file in input_rewrites:
-                with open(input_rewrites[input_file], 'w') as wfh:
+                with open(input_rewrites[input_file], "w") as wfh:
                     for line in out_contents:
-                        wfh.write('{}\n'.format(line))
+                        wfh.write("{}\n".format(line))
                 includes.append(input_rewrites[input_file])
             else:
                 includes.append(input_file)
@@ -259,28 +264,31 @@ def compile_requirement_file(source, dest, options, unknown_args):
     call_args.append(source)
 
     original_sys_arg = sys.argv[:]
-    with mock.patch('pip._internal.utils.misc.sys.version_info',
-                    new_callable=mock.PropertyMock(return_value=real_version_info)):
+    with mock.patch(
+        "pip._internal.utils.misc.sys.version_info",
+        new_callable=mock.PropertyMock(return_value=real_version_info),
+    ):
         try:
-            print('Running: {}'.format(' '.join(call_args)))
-            print('  Impersonating: {}'.format(options.platform))
-            print('  Mocked Python Version: {}'.format(options.py_version))
+            print("Running: {}".format(" ".join(call_args)))
+            print("  Impersonating: {}".format(options.platform))
+            print("  Mocked Python Version: {}".format(options.py_version))
             sys.argv = call_args[:]
-            log.debug('Switching sys.argv to: %s', sys.argv)
+            log.debug("Switching sys.argv to: %s", sys.argv)
             try:
                 import piptools.scripts.compile
+
                 piptools.scripts.compile.cli()
             except SystemExit as exc:
                 if exc.code == 0:
                     return True
-                print('Failed to compile requirements. Exit code: {}'.format(exc.code))
+                print("Failed to compile requirements. Exit code: {}".format(exc.code))
                 return False
             except Exception:
-                print('Exception raised when processing {}'.format(source))
+                print("Exception raised when processing {}".format(source))
                 print(traceback.format_exc())
                 return False
         finally:
-            log.info('Finished compiling %s', dest)
+            log.info("Finished compiling %s", dest)
 
             if input_rewrites:
                 with open(dest) as rfh:
@@ -295,12 +303,12 @@ def compile_requirement_file(source, dest, options, unknown_args):
                     except OSError:
                         pass
 
-                with open(dest, 'w') as wfh:
+                with open(dest, "w") as wfh:
                     wfh.write(dest_contents)
                     for input_file, lines in passthrough_lines.items():
-                        wfh.write('# Passthrough dependencies from {}\n'.format(input_file))
+                        wfh.write("# Passthrough dependencies from {}\n".format(input_file))
                         for line in lines:
-                            wfh.write('{}\n'.format(line))
+                            wfh.write("{}\n".format(line))
 
             sys.argv = original_sys_arg
 
@@ -311,32 +319,28 @@ def compile_requirement_file(source, dest, options, unknown_args):
 def show_info_to_patch():
     import pprint
     import platform
-    print('Generating information under {}\n'.format(platform.system()))
+
+    print("Generating information under {}\n".format(platform.system()))
     patch_data = (
-        ('pip._internal.pep425tags', 'get_impl_version_info'),
-        ('pip._internal.utils.packaging', 'sys.version_info'),
-        ('pip._vendor.packaging.markers', 'platform.python_version'),
-        ('pip._internal.pep425tags', 'get_platform'),
-        ('pip._internal.pep425tags', 'get_supported'),
-        ('pip._internal.index', 'get_supported'),
-        ('pip._vendor.packaging.markers', 'os.name'),
-        ('pip._vendor.packaging.markers', 'sys.platform'),
-        ('pip._vendor.packaging.markers', 'platform.machine'),
-        ('pip._vendor.packaging.markers', 'platform.release'),
-        ('pip._vendor.packaging.markers', 'platform.system'),
-        ('pip._vendor.packaging.markers', 'platform.version'),
-        )
+        ("pip._vendor.packaging.markers", "platform.python_version"),
+        ("pip._vendor.packaging.markers", "os.name"),
+        ("pip._vendor.packaging.markers", "sys.platform"),
+        ("pip._vendor.packaging.markers", "platform.machine"),
+        ("pip._vendor.packaging.markers", "platform.release"),
+        ("pip._vendor.packaging.markers", "platform.system"),
+        ("pip._vendor.packaging.markers", "platform.version"),
+    )
     real_data = {}
     for module, function in patch_data:
         if module not in real_data:
             real_data[module] = {}
         mod = __import__(module)
-        mod_parts = module.split('.')
+        mod_parts = module.split(".")
         mod_parts.pop(0)
         while mod_parts:
             part = mod_parts.pop(0)
             mod = getattr(mod, part)
-        func_parts = function.split('.')
+        func_parts = function.split(".")
         func = mod
         while func_parts:
             part = func_parts.pop(0)
@@ -352,28 +356,30 @@ def show_info_to_patch():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--show-info-to-patch',
-        action='store_true',
-        help='Print out the information we require to patch the multiple platforms'
+        "--show-info-to-patch",
+        action="store_true",
+        help="Print out the information we require to patch the multiple platforms",
     )
     parser.add_argument(
-        '--platform',
-        choices=('windows', 'darwin', 'linux'),
-        default=platform.system().lower()
+        "--platform", choices=("windows", "darwin", "linux"), default=platform.system().lower()
     )
-    parser.add_argument('--py-version', default='{}.{}'.format(*sys.version_info))
-    parser.add_argument('--include', action='append', default=[])
-    parser.add_argument('--output-dir', default=None)
-    parser.add_argument('--out-prefix', default=None)
+    parser.add_argument("--py-version", default="{}.{}".format(*sys.version_info))
+    parser.add_argument("--include", action="append", default=[])
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--out-prefix", default=None)
     parser.add_argument(
-        '--remove-line', default=[], action='append',
-        help='Python regular experession to search and remove from the compiled requirements and remove it'
+        "--remove-line",
+        default=[],
+        action="append",
+        help="Python regular experession to search and remove from the compiled requirements and remove it",
     )
     parser.add_argument(
-        '--passthrough-line-from-input', default=[], action='append',
-        help='Python regular experession to search and remove from the input requirements and append in the destination requirements file'
+        "--passthrough-line-from-input",
+        default=[],
+        action="append",
+        help="Python regular experession to search and remove from the input requirements and append in the destination requirements file",
     )
-    parser.add_argument('files', nargs='*')
+    parser.add_argument("files", nargs="*")
 
     options, unknown_args = parser.parse_known_args()
 
@@ -382,12 +388,12 @@ def main():
         parser.exit(0)
 
     if not options.files:
-        parser.exit(2, 'Please pass at least one requirement file')
+        parser.exit(2, "Please pass at least one requirement file")
 
     impersonations = {
-        'darwin': ImpersonateDarwin,
-        'windows': ImpersonateWindows,
-        'linux': ImpersonateLinux
+        "darwin": ImpersonateDarwin,
+        "windows": ImpersonateWindows,
+        "linux": ImpersonateLinux,
     }
 
     regexes = []
@@ -400,8 +406,9 @@ def main():
     with CatureSTDs() as capstds:
         with impersonations[options.platform](options.py_version, options.platform):
             import piptools.scripts.compile
+
             for fpath in options.files:
-                if not fpath.endswith('.in'):
+                if not fpath.endswith(".in"):
                     continue
 
                 # Return the log strem to 0, either to write a log file in case of an error,
@@ -412,46 +419,47 @@ def main():
                 if options.output_dir:
                     dest_dir = options.output_dir
                 else:
-                    dest_dir = os.path.join(source_dir, 'py{}'.format(options.py_version))
+                    dest_dir = os.path.join(source_dir, "py{}".format(options.py_version))
                 if not os.path.isdir(dest_dir):
                     os.makedirs(dest_dir)
-                outfile = os.path.basename(fpath).replace('.in', '.txt')
+                outfile = os.path.basename(fpath).replace(".in", ".txt")
                 if options.out_prefix:
-                    outfile = '{}-{}'.format(options.out_prefix, outfile)
+                    outfile = "{}-{}".format(options.out_prefix, outfile)
                 outfile_path = os.path.join(dest_dir, outfile)
                 if not compile_requirement_file(fpath, outfile_path, options, unknown_args):
                     exitcode = 1
-                    error_logfile = outfile_path.replace('.txt', '.log')
-                    with open(error_logfile, 'w') as wfh:
-                        wfh.write(LOG_STREAM.read())
+                    error_logfile = outfile_path.replace(".txt", ".log")
+                    with open(error_logfile, "w") as wfh:
                         LOG_STREAM.seek(0)
-                        print('Error log file at {}'.format(error_logfile))
+                        wfh.write(LOG_STREAM.read())
+                        print("Error log file at {}".format(error_logfile))
                     continue
 
                 if not regexes:
                     continue
 
-                with open(outfile_path, 'r') as rfh:
+                with open(outfile_path) as rfh:
                     in_contents = rfh.read()
 
                 out_contents = []
                 for line in in_contents.splitlines():
-                    print('Processing line: {!r} // {}'.format(line, [r.pattern for r in regexes]))
+                    print("Processing line: {!r} // {}".format(line, [r.pattern for r in regexes]))
                     for regex in regexes:
                         if regex.match(line):
-                            print("Line commented out by regex '{}': '{}'".format(regex.pattern, line))
-                            line = textwrap.dedent('''\
+                            print(
+                                "Line commented out by regex '{}': '{}'".format(regex.pattern, line)
+                            )
+                            line = textwrap.dedent(
+                                """\
                                 # Next line explicitly commented out by {} because of the following regex: '{}'
-                                # {}'''.format(
-                                    os.path.basename(__file__),
-                                    regex.pattern,
-                                    line
+                                # {}""".format(
+                                    os.path.basename(__file__), regex.pattern, line
                                 )
                             )
                             break
                     out_contents.append(line)
 
-                with open(outfile_path, 'w') as wfh:
+                with open(outfile_path, "w") as wfh:
                     wfh.write(os.linesep.join(out_contents) + os.linesep)
 
             if exitcode:
@@ -465,5 +473,5 @@ def main():
     sys.exit(exitcode)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
