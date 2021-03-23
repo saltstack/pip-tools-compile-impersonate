@@ -5,10 +5,10 @@
 
     Wrapper around pip-tools to "impersonate" different distributions when compiling requirements
 """
-# Import Python Libs
 import argparse
 import atexit
 import functools
+import io
 import logging
 import os
 import platform
@@ -26,10 +26,7 @@ except ImportError:
 
 CAPTURE_OUTPUT = os.environ.get("CAPTURE_OUTPUT", "1") == "1"
 
-# Import 3rd-party Libs
-import six
-
-LOG_STREAM = six.StringIO()
+LOG_STREAM = io.StringIO()
 logging.basicConfig(
     level=logging.DEBUG,
     stream=LOG_STREAM,
@@ -185,8 +182,8 @@ class ImpersonateLinux(ImpersonateSystem):
 
 class CatureSTDs:
     def __init__(self):
-        self._stdout = six.StringIO()
-        self._stderr = six.StringIO()
+        self._stdout = io.StringIO()
+        self._stderr = io.StringIO()
         self._sys_stdout = sys.stdout
         self._sys_stderr = sys.stderr
 
@@ -264,6 +261,7 @@ def compile_requirement_file(source, dest, options, unknown_args):
     call_args.append(source)
 
     original_sys_arg = sys.argv[:]
+    success = False
     with mock.patch(
         "pip._internal.utils.misc.sys.version_info",
         new_callable=mock.PropertyMock(return_value=real_version_info),
@@ -280,40 +278,39 @@ def compile_requirement_file(source, dest, options, unknown_args):
                 piptools.scripts.compile.cli()
             except SystemExit as exc:
                 if exc.code == 0:
-                    return True
+                    success = True
                 print("Failed to compile requirements. Exit code: {}".format(exc.code))
-                return False
             except Exception:
                 print("Exception raised when processing {}".format(source))
                 print(traceback.format_exc())
-                return False
         finally:
-            log.info("Finished compiling %s", dest)
+            if success is True:
+                log.info("Finished compiling %s", dest)
 
-            if input_rewrites:
-                with open(dest) as rfh:
-                    dest_contents = rfh.read()
+                if input_rewrites:
+                    with open(dest) as rfh:
+                        dest_contents = rfh.read()
 
-                for input_file, rewriten_file in input_rewrites.items():
-                    if rewriten_file in dest_contents:
-                        dest_contents = dest_contents.replace(rewriten_file, input_file)
+                    for input_file, rewriten_file in input_rewrites.items():
+                        if rewriten_file in dest_contents:
+                            dest_contents = dest_contents.replace(rewriten_file, input_file)
 
-                    try:
-                        os.unlink(rewriten_file)
-                    except OSError:
-                        pass
+                        try:
+                            os.unlink(rewriten_file)
+                        except OSError:
+                            pass
 
-                with open(dest, "w") as wfh:
-                    wfh.write(dest_contents)
-                    for input_file, lines in passthrough_lines.items():
-                        wfh.write("# Passthrough dependencies from {}\n".format(input_file))
-                        for line in lines:
-                            wfh.write("{}\n".format(line))
+                    with open(dest, "w") as wfh:
+                        wfh.write(dest_contents)
+                        for input_file, lines in passthrough_lines.items():
+                            wfh.write("# Passthrough dependencies from {}\n".format(input_file))
+                            for line in lines:
+                                wfh.write("{}\n".format(line))
 
             sys.argv = original_sys_arg
 
     # Flag success
-    return True
+    return success
 
 
 def show_info_to_patch():
