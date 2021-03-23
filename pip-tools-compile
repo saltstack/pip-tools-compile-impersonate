@@ -203,13 +203,21 @@ class CatureSTDs:
 
     @property
     def stdout(self):
+        pos = self._stdout.tell()
         self._stdout.seek(0)
-        return self._stdout.read()
+        try:
+            return self._stdout.read()
+        finally:
+            self._stdout.seek(pos)
 
     @property
     def stderr(self):
+        pos = self._stderr.tell()
         self._stderr.seek(0)
-        return self._stderr.read()
+        try:
+            return self._stderr.read()
+        finally:
+            self._stderr.seek(pos)
 
 
 def compile_requirement_file(source, dest, options, unknown_args):
@@ -428,7 +436,21 @@ def main():
                     error_logfile = outfile_path.replace(".txt", ".log")
                     with open(error_logfile, "w") as wfh:
                         LOG_STREAM.seek(0)
-                        wfh.write(LOG_STREAM.read())
+                        wfh.write(
+                            ">>>>>>> LOGS >>>>>>>>>\n{}\n<<<<<<< LOGS <<<<<<<<<\n".format(
+                                LOG_STREAM.read().strip()
+                            )
+                        )
+                        wfh.write(
+                            "\n>>>>>>> STDOUT >>>>>>>\n{}\n<<<<<<< STDOUT <<<<<<<\n".format(
+                                capstds.stdout.strip()
+                            )
+                        )
+                        wfh.write(
+                            "\n>>>>>>> STDERR >>>>>>>\n{}\n<<<<<<< STDERR <<<<<<<\n".format(
+                                capstds.stderr.strip()
+                            )
+                        )
                         print("Error log file at {}".format(error_logfile))
                     continue
 
