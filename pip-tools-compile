@@ -420,6 +420,26 @@ def main():
 
     os.environ["PIP_TOOLS_COMPILE_CLEAN_CACHE"] = "1" if options.clean_cache else "0"
 
+    if SYSTEM == "windows":
+        print(
+            "\n"
+            "============================================================================\n"
+            "  Windows Is Not Supported. Please Run In A Linux Docker Container Instead  \n"
+            "============================================================================\n",
+            "\n",
+            file=sys.stderr,
+        )
+
+    if SYSTEM == "darwin":
+        print(
+            "\n"
+            "==========================================================================\n"
+            "  macOS Is Not Supported. Please Run In A Linux Docker Container Instead  \n"
+            "==========================================================================\n",
+            "\n",
+            file=sys.stderr,
+        )
+
     impersonations = {
         "darwin": ImpersonateDarwin,
         "windows": ImpersonateWindows,
