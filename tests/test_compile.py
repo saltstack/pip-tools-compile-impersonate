@@ -37,6 +37,7 @@ def test_py_version_nested_requirements(run_command, python_version):
     retcode = run_command(
         "pip-tools-compile",
         "-v",
+        "--clean-cache",
         "--py-version={}".format(python_version),
         "--platform=linux",
         input_requirement,
@@ -110,7 +111,11 @@ def test_markers(run_command, platform, marker, expected):
         os.unlink(compiled_requirements)
     # Run it through pip-tools-compile
     retcode = run_command(
-        "pip-tools-compile", "-v", "--platform={}".format(platform), input_requirement
+        "pip-tools-compile",
+        "-v",
+        "--clean-cache",
+        "--platform={}".format(platform),
+        input_requirement,
     )
     assert retcode == 0
     with open(compiled_requirements) as crfh:
@@ -164,6 +169,7 @@ def test_pywin32(run_command, platform, version, python_version):
     retcode = run_command(
         "pip-tools-compile",
         "-v",
+        "--clean-cache",
         "--platform={}".format(platform),
         "--py-version={}".format(python_version),
         "-vv",
@@ -202,6 +208,7 @@ def test_jsonschema(run_command, platform):
     retcode = run_command(
         "pip-tools-compile",
         "-v",
+        "--clean-cache",
         "--py-version=3.5",
         "--platform={}".format(platform),
         input_requirement,
@@ -246,6 +253,7 @@ def test_pyobjc(run_command, platform, python_version):
     retcode = run_command(
         "pip-tools-compile",
         "-v",
+        "--clean-cache",
         "--platform={}".format(platform),
         "--py-version={}".format(python_version),
         input_requirement,
