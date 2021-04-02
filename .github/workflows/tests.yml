@@ -9,57 +9,75 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [2.7, 3.5, 3.6]
+        python-version:
+          - "3.5"
+          - "3.6"
+          - "3.7"
+          - "3.8"
+          - "3.9"
+          - "3.10.0-alpha.6"
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
     - name: Prep System
       run: |
-        python -m pip install nox-py2
+        python -m pip install nox
     - name: Test
       run: |
-        nox --forcecolor -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-3
 
   MacOS:
     runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: [2.7, 3.5, 3.6]
+        python-version:
+          - "3.5"
+          - "3.6"
+          - "3.7"
+          - "3.8"
+          - "3.9"
+          - "3.10.0-alpha.6"
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
     - name: Prep System
       run: |
-        python -m pip install nox-py2
+        python -m pip install nox
     - name: Test
       run: |
-        nox --forcecolor -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-3
 
   Windows:
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: [2.7, 3.5, 3.6]
+        python-version:
+          - "3.5"
+          - "3.6"
+          - "3.7"
+          - "3.8"
+          - "3.9"
+          - "3.10.0-alpha.6"
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
     - name: Prep System
       run: |
-        python -m pip install nox-py2
+        python -m pip install nox
     - name: Test
       run: |
-        nox --forcecolor -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-3

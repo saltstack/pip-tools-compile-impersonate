@@ -1,36 +1,32 @@
-# -*- coding: utf-8 -*-
-'''
+"""
 conftest
 ~~~~~~~~
-'''
-
-# Import Python Libs
-import os
-import sys
+"""
 import logging
+import os
 import subprocess
+import sys
 from collections import namedtuple
 
-# Import 3rd-party libs
 import pytest
 
 REPO_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
-ProcessResult = namedtuple('ProcessResult', ['rc', 'stdout', 'stderr'])
+ProcessResult = namedtuple("ProcessResult", ["rc", "stdout", "stderr"])
 log = logging.getLogger(__name__)
 
 
-class RunCommand(object):
+class RunCommand:
     def __init__(self):
         self.argv = [
-            #sys.executable,
+            sys.executable,
         ]
         self.environ = os.environ.copy()
-        self.environ['CAPTURE_OUTPUT'] = '0'
+        self.environ["CAPTURE_OUTPUT"] = "1"
 
     def __call__(self, *args):
         cmdline = self.argv + list(args)
-        log.info('Running: %r', ' '.join(cmdline))
+        log.info("Running: %r", " ".join(cmdline))
         try:
             return subprocess.check_call(cmdline, cwd=REPO_ROOT, env=self.environ)
         except subprocess.CalledProcessError as exc:

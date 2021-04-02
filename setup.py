@@ -1,12 +1,11 @@
 from setuptools import setup
 
 setup(
-    name='pip-tools-compile',
-    version='1.0',
+    name="pip-tools-compile",
+    version="2.0",
     install_requires=[
-        'six',
-        'pip-tools==3.6.1',
-        'pip==19.1',
-        'mock>=2.0.0; python_version < \'3\''
+        "pip-tools==5.5.0",
+        "pip==20.2.4",
     ],
-    scripts=['pip-tools-compile'])
+    scripts=["pip-tools-compile"],
+)
