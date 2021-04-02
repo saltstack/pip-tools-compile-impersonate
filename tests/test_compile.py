@@ -125,7 +125,7 @@ def test_markers(run_command, platform, marker, expected):
     ), "The {!r} was not found in the compiled output\n{}".format(expected, compiled_contents)
 
 
-@pytest.mark.parametrize("version", [223, 225, 300])
+@pytest.mark.parametrize("version", [225, 300])
 @pytest.mark.parametrize("platform", ["linux", "darwin", "windows"])
 @pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
 def test_pywin32(run_command, platform, version, python_version):
@@ -133,15 +133,6 @@ def test_pywin32(run_command, platform, version, python_version):
     pywin32 has been an issue when mocking the requirements file compilation. test it.
     """
     version_info = tuple(int(part) for part in python_version.split("."))
-    if version == 223:
-        if version_info >= (3, 8):
-            # There's no wheel package for Py3.8+
-            pytest.skip("There's no pywin32=={} wheel package for Py3.8+".format(version))
-        if version_info == (3, 6) and platform == "windows":
-            pytest.skip(
-                "There's a pywin32=={} wheel package for Py3.6 but it seems it just fails to compile "
-                "when passing --platform==windows".format(version)
-            )
     if version_info >= (3, 10):
         # There's no wheel package for Py3.10+
         pytest.skip("There's no pywin32=={} wheel package for Py3.10+".format(version))
