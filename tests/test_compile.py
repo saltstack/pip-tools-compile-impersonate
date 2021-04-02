@@ -25,12 +25,6 @@ TARGET_PYTHON_VERSIONS = ("3.5", "3.6", "3.7", "3.8", "3.9", "3.10")
 
 @pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
 def test_py_version_nested_requirements(run_command, python_version):
-    version_info = tuple(int(part) for part in python_version.split("."))
-    if version_info >= (3, 10):
-        pytest.skip(
-            "There seems to be some extra comments in the generated file which make the test fail"
-        )
-    input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "boto3.in")
     compiled_requirements = os.path.join(
         INPUT_REQUIREMENTS_DIR, "py{}".format(python_version), "boto3.txt"
     )
