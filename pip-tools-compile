@@ -23,6 +23,7 @@ from unittest import mock
 
 SYSTEM = platform.system().lower()
 CAPTURE_OUTPUT = os.environ.get("CAPTURE_OUTPUT", "1") == "1"
+VERBOSE_COMPILE = os.environ.get("VERBOSE_COMPILE", "0") == "1"
 
 LOG_STREAM = io.StringIO()
 logging.basicConfig(

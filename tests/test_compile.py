@@ -121,14 +121,26 @@ def test_markers(run_command, platform, marker, expected):
     ), "The {!r} was not found in the compiled output\n{}".format(expected, compiled_contents)
 
 
+@pytest.mark.parametrize("version", [223, 225, 300])
 @pytest.mark.parametrize("platform", ["linux", "darwin", "windows"])
-def test_pywin32(run_command, platform):
+@pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
+def test_pywin32(run_command, platform, version, python_version):
     """
     pywin32 has been an issue when mocking the requirements file compilation. test it.
     """
-    if sys.version_info >= (3, 8):
-        # There's no wheel package for Py3.8+
-        pytest.skip("There's not pywin32==223 wheel package for Py3.8+")
+    version_info = tuple(int(part) for part in python_version.split("."))
+    if version == 223:
+        if version_info >= (3, 8):
+            # There's no wheel package for Py3.8+
+            pytest.skip("There's no pywin32=={} wheel package for Py3.8+".format(version))
+        if version_info == (3, 6) and platform == "windows":
+            pytest.skip(
+                "There's a pywin32=={} wheel package for Py3.6 but it seems it just fails to compile "
+                "when passing --platform==windows".format(version)
+            )
+    if version_info >= (3, 10):
+        # There's no wheel package for Py3.10+
+        pytest.skip("There's no pywin32=={} wheel package for Py3.10+".format(version))
     input_requirement_name = "pywin32-req"
     input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
     with open(input_requirement, "w") as wfh:
@@ -136,33 +148,40 @@ def test_pywin32(run_command, platform):
             textwrap.dedent(
                 """\
             pep8
-            pywin32==223; sys.platform == 'win32'
-            """
+            pywin32=={}; sys.platform == 'win32'
+            """.format(
+                    version
+                )
             )
         )
     compiled_requirements = os.path.join(
         INPUT_REQUIREMENTS_DIR,
-        "py{}.{}".format(*sys.version_info),
+        "py{}".format(python_version),
         "{}.txt".format(input_requirement_name),
     )
     if os.path.exists(compiled_requirements):
         os.unlink(compiled_requirements)
     # Run it through pip-tools-compile
     retcode = run_command(
-        "pip-tools-compile", "-v", "--platform={}".format(platform), input_requirement
+        "pip-tools-compile",
+        "-v",
+        "--platform={}".format(platform),
+        "--py-version={}".format(python_version),
+        "-vv",
+        input_requirement,
     )
     assert retcode == 0
     with open(compiled_requirements) as crfh:
         compiled_contents = crfh.read()
     if platform == "windows":
         assert (
-            "pywin32==" in compiled_contents
+            "pywin32=={}".format(version) in compiled_contents
         ), "The pywin32 requirement was not found in the compiled output\n{}".format(
             compiled_contents
         )
     else:
         assert (
-            "pywin32==" not in compiled_contents
+            "pywin32=={}".format(version) not in compiled_contents
         ), "The pywin32 requirement was found in the compiled output\n{}".format(compiled_contents)
 
 
@@ -196,7 +215,8 @@ def test_jsonschema(run_command, platform):
 
 
 @pytest.mark.parametrize("platform", ["linux", "darwin", "windows"])
-def test_pyobjc(run_command, platform):
+@pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
+def test_pyobjc(run_command, platform, python_version):
     """
     pyobjc has been an issue when mocking the requirements file compilation. test it.
     """
@@ -213,14 +233,18 @@ def test_pyobjc(run_command, platform):
         )
     compiled_requirements = os.path.join(
         INPUT_REQUIREMENTS_DIR,
-        "py{}.{}".format(*sys.version_info),
+        "py{}".format(python_version),
         "{}.txt".format(input_requirement_name),
     )
     if os.path.exists(compiled_requirements):
         os.unlink(compiled_requirements)
     # Run it through pip-tools-compile
     retcode = run_command(
-        "pip-tools-compile", "-v", "--platform={}".format(platform), input_requirement
+        "pip-tools-compile",
+        "-v",
+        "--platform={}".format(platform),
+        "--py-version={}".format(python_version),
+        input_requirement,
     )
     assert retcode == 0
     with open(compiled_requirements) as crfh:
