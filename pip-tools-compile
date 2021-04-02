@@ -91,6 +91,9 @@ def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     )
     log.info("Tweaking the pip-tools depcache file to: %s", cache_file)
     depcache._cache_file = cache_file
+    if os.environ["PIP_TOOLS_COMPILE_CLEAN_CACHE"] == "1":
+        if os.path.exists(cache_file):
+            os.unlink(cache_file)
     return depcache
 
 
@@ -398,6 +401,12 @@ def main():
         action="append",
         help="Python regular experession to search and remove from the input requirements and append in the destination requirements file",
     )
+    parser.add_argument(
+        "--clean-cache",
+        action="store_true",
+        default=False,
+        help="Clean pip-tools dependency cache files",
+    )
     parser.add_argument("files", nargs="*")
 
     options, unknown_args = parser.parse_known_args()
@@ -408,6 +417,8 @@ def main():
 
     if not options.files:
         parser.exit(2, "Please pass at least one requirement file")
+
+    os.environ["PIP_TOOLS_COMPILE_CLEAN_CACHE"] = "1" if options.clean_cache else "0"
 
     impersonations = {
         "darwin": ImpersonateDarwin,
