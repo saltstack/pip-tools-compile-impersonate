@@ -126,6 +126,9 @@ def test_pywin32(run_command, platform):
     """
     pywin32 has been an issue when mocking the requirements file compilation. test it.
     """
+    if sys.version_info >= (3, 8):
+        # There's no wheel package for Py3.8+
+        pytest.skip("There's not pywin32==223 wheel package for Py3.8+")
     input_requirement_name = "pywin32-req"
     input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
     with open(input_requirement, "w") as wfh:
@@ -204,7 +207,7 @@ def test_pyobjc(run_command, platform):
             textwrap.dedent(
                 """\
             pep8
-            pyobjc==5.1.2; sys.platform == 'darwin'
+            pyobjc==6.2; sys.platform == 'darwin'
             """
             )
         )
