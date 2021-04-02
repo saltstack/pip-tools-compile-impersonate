@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 class RunCommand:
     def __init__(self):
         self.argv = [
-            # sys.executable,
+            sys.executable,
         ]
         self.environ = os.environ.copy()
         self.environ["CAPTURE_OUTPUT"] = "1"
