@@ -28,7 +28,7 @@ jobs:
         python -m pip install nox
     - name: Test
       run: |
-        nox --forcecolor -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-3
 
   MacOS:
     runs-on: macos-latest
@@ -54,7 +54,7 @@ jobs:
         python -m pip install nox
     - name: Test
       run: |
-        nox --forcecolor -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-3
 
   Windows:
     runs-on: windows-latest
@@ -80,4 +80,4 @@ jobs:
         python -m pip install nox
     - name: Test
       run: |
-        nox --forcecolor -e tests-${{ matrix.python-version }}
+        nox --forcecolor -e tests-3

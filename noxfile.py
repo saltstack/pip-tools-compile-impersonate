@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
 import nox
 
-PYTHON_VERSIONS = ("2.7", "3.4", "3.5", "3.6", "3.7", "3.8")
+PYTHON_VERSIONS = ("3", "3.5", "3.6", "3.7", "3.8", "3.9", "3.10")
 
 # Nox options
 #  Reuse existing virtualenvs
