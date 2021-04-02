@@ -216,10 +216,15 @@ def test_jsonschema(run_command, platform):
 
 @pytest.mark.parametrize("platform", ["linux", "darwin", "windows"])
 @pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
+@pytest.mark.skip("Salt no longer pins pyobjc. Skipping this test for now")
 def test_pyobjc(run_command, platform, python_version):
     """
     pyobjc has been an issue when mocking the requirements file compilation. test it.
     """
+    version_info = tuple(int(part) for part in python_version.split("."))
+    if version_info < (3, 6):
+        # There's no wheel package for Py3.5
+        pytest.skip("There's no pyobjc-core==6.2 wheel package for Py3.5")
     input_requirement_name = "pyobjc-req"
     input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
     with open(input_requirement, "w") as wfh:
