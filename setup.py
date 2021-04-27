@@ -6,6 +6,7 @@ setup(
     install_requires=[
         "pip-tools==5.5.0",
         "pip==20.2.4",
+        "setuptools-rust",
     ],
     scripts=["pip-tools-compile"],
 )
