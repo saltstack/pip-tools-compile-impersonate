@@ -96,7 +96,9 @@ def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     depcache = DependencyCache(*args, **kwargs)
     cache_file = os.path.join(
         os.path.dirname(depcache._cache_file),
-        "depcache-{}-py{}.{}.json".format(platform, *version_info),
+        "depcache-{}-py{}.{}-mocked-py{}.{}.json".format(
+            platform, *sys.version_info[:2], *version_info[:2]
+        ),
     )
     log.info("Tweaking the pip-tools depcache file to: %s", cache_file)
     depcache._cache_file = cache_file
