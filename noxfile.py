@@ -29,15 +29,15 @@ IS_WINDOWS = sys.platform.lower().startswith("win")
 @nox.session(python=PYTHON_VERSIONS)
 def tests(session):
     if IS_WINDOWS:
-        session.run("python", "-m", "pip", "install", "-e", ".")
+        session.run("python", "-m", "pip", "install", ".")
     else:
-        session.install("-e", ".")
+        session.install(".")
     session.install("pytest")
     session.run("pytest", "-ra", "-s", "-vv", *session.posargs)
 
 
 @nox.session(python=False, name="tests-system")
 def tests_system(session):
-    session.run("python", "-m", "pip", "install", "-e", ".")
+    session.run("python", "-m", "pip", "install", ".")
     session.run("python", "-m", "pip", "install", "pytest")
     session.run("python", "-m", "pytest", "-ra", "-s", "-vv", "tests", *session.posargs)
