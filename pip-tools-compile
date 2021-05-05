@@ -208,6 +208,43 @@ class ImpersonateLinux(ImpersonateSystem):
             )
 
 
+class ImpersonateFreeBSD(ImpersonateSystem):
+    def get_mocks(self):
+        yield from super().get_mocks()
+        if SYSTEM != "freebsd":
+            # We don't want pip trying query python's internals, it knows how to mock that internal information
+            yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
+            # Patch pip's vendored packaging markers
+            yield mock.patch(
+                "pip._vendor.packaging.markers.sys.platform",
+                new_callable=mock.PropertyMock(return_value="freebsd14"),
+            )
+            yield mock.patch(
+                "pip._vendor.packaging.markers.os.name",
+                new_callable=mock.PropertyMock(return_value="posix"),
+            )
+            yield mock.patch(
+                "pip._vendor.packaging.markers.platform.machine", return_value="x86_64"
+            )
+            yield mock.patch(
+                "pip._vendor.packaging.markers.platform.release", return_value="14.0-CURRENT"
+            )
+            yield mock.patch(
+                "pip._vendor.packaging.markers.platform.system", return_value="FreeBSD"
+            )
+            yield mock.patch(
+                "pip._vendor.packaging.markers.platform.version",
+                return_value=(
+                    "FreeBSD 14.0-CURRENT #35 main-n246214-78ffcb86d98: Tue Apr 20 10:59:32 CEST 2021     "
+                    "root@krion.cc:/usr/obj/usr/src/amd64.amd64/sys/GENERIC"
+                ),
+            )
+            yield mock.patch(
+                "pip._vendor.packaging.markers.platform.python_version",
+                return_value="{}.{}.{}".format(*self._python_version_info),
+            )
+
+
 class CatureSTDs:
     def __init__(self):
         self._stdout = io.StringIO()
@@ -394,7 +431,9 @@ def main():
         help="Print out the information we require to patch the multiple platforms",
     )
     parser.add_argument(
-        "--platform", choices=("windows", "darwin", "linux"), default=platform.system().lower()
+        "--platform",
+        choices=("windows", "darwin", "linux", "freebsd"),
+        default=platform.system().lower(),
     )
     parser.add_argument("--py-version", default="{}.{}".format(*sys.version_info))
     parser.add_argument("--include", action="append", default=[])
@@ -465,6 +504,7 @@ def main():
         "darwin": ImpersonateDarwin,
         "windows": ImpersonateWindows,
         "linux": ImpersonateLinux,
+        "freebsd": ImpersonateFreeBSD,
     }
 
     regexes = []
