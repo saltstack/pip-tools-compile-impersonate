@@ -263,3 +263,47 @@ def test_pyobjc(run_command, platform, python_version):
         assert (
             "pyobjc==" not in compiled_contents
         ), "The pyobjc requirement was found in the compiled output\n{}".format(compiled_contents)
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin", "windows"])
+@pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
+def test_backports_ssl_match_hostname(run_command, platform, python_version):
+    """
+    pywin32 has been an issue when mocking the requirements file compilation. test it.
+    """
+    version_info = tuple(int(part) for part in python_version.split("."))
+    input_requirement_name = "backports-ssl-match-hostname"
+    input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
+    with open(input_requirement, "w") as wfh:
+        wfh.write(
+            textwrap.dedent(
+                """\
+            pep8
+            backports.ssl-match-hostname==3.7.0.1 ; python_version < "3.7"
+            """
+            )
+        )
+    compiled_requirements = os.path.join(
+        INPUT_REQUIREMENTS_DIR,
+        "py{}".format(python_version),
+        "{}.txt".format(input_requirement_name),
+    )
+    if os.path.exists(compiled_requirements):
+        os.unlink(compiled_requirements)
+    # Run it through pip-tools-compile
+    retcode = run_command(
+        "pip-tools-compile",
+        "-v",
+        "--clean-cache",
+        "--platform={}".format(platform),
+        "--py-version={}".format(python_version),
+        "-vv",
+        input_requirement,
+    )
+    assert retcode == 0
+    with open(compiled_requirements) as crfh:
+        compiled_contents = crfh.read()
+    if version_info < (3, 7):
+        assert "backports.ssl-match-hostname" in compiled_contents
+    else:
+        assert "backports.ssl-match-hostname" not in compiled_contents

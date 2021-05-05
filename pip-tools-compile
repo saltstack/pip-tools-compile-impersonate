@@ -70,9 +70,18 @@ class ImpersonateSystem:
             ),
         )
         yield mock.patch(
-            "pip._vendor.packaging.markers.platform.python_version",
-            return_value="{}.{}.{}".format(*self._python_version_info),
+            "pip._vendor.packaging.tags.sys.version_info",
+            return_value=self._python_version_info,
         )
+        for toplevel in ("pip._vendor.distlib", "pip._vendor.packaging"):
+            yield mock.patch(
+                "{}.markers.platform.python_version".format(toplevel),
+                return_value="{}.{}.{}".format(*self._python_version_info),
+            )
+            yield mock.patch(
+                "{}.markers.platform.python_version_tuple".format(toplevel),
+                return_value=tuple(str(part) for part in self._python_version_info),
+            )
 
     def __enter__(self):
         for mock_obj in self.get_mocks():
