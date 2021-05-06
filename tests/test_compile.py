@@ -335,6 +335,7 @@ def test_boto3_py35(run_command):
     retcode = run_command(
         "pip-tools-compile",
         "-v",
+        "--clean-cache",
         "--platform=linux",
         "--py-version=3.5",
         "-vv",
@@ -354,6 +355,7 @@ def test_boto3_py35(run_command):
     retcode = run_command(
         "pip-tools-compile",
         "-v",
+        "--clean-cache",
         "--platform=linux",
         "--py-version=3.6",
         "-vv",
