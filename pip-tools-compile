@@ -20,6 +20,36 @@ import traceback
 from collections import namedtuple
 from unittest import mock
 
+try:
+    from importlib.metadata import version, PackageNotFoundError
+
+    try:
+        __version__ = version("pip-tools-compile")
+    except PackageNotFoundError:
+        # package is not installed
+        pass
+except ImportError:
+    try:
+        from importlib_metadata import version, PackageNotFoundError
+
+        try:
+            __version__ = version("pip-tools-compile")
+        except PackageNotFoundError:
+            # package is not installed
+            pass
+    except ImportError:
+        try:
+            from pkg_resources import get_distribution, DistributionNotFound
+
+            try:
+                __version__ = get_distribution("pip-tools-compile").version
+            except DistributionNotFound:
+                # package is not installed
+                pass
+        except ImportError:
+            # pkg resources isn't even available?!
+            pass
+
 
 SYSTEM = platform.system().lower()
 CAPTURE_OUTPUT = os.environ.get("CAPTURE_OUTPUT", "1") == "1"
@@ -108,8 +138,8 @@ def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     # pylint: disable=protected-access
     cache_file = os.path.join(
         os.path.dirname(depcache._cache_file),
-        "depcache-{}-py{}.{}-mocked-py{}.{}.json".format(
-            platform, *sys.version_info[:2], *version_info[:2]
+        "depcache-{}-ptc{}-py{}.{}-mocked-py{}.{}.json".format(
+            platform, __version__, *sys.version_info[:2], *version_info[:2]
         ),
     )
     log.info("Tweaking the pip-tools depcache file to: %s", cache_file)
