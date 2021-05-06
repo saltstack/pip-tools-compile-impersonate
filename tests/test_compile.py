@@ -307,3 +307,57 @@ def test_backports_ssl_match_hostname(run_command, platform, python_version):
         assert "backports.ssl-match-hostname" in compiled_contents
     else:
         assert "backports.ssl-match-hostname" not in compiled_contents
+
+
+def test_boto3_py35(run_command):
+    """
+    There's not boto3==1.17.66 for Py3.5
+    """
+    input_requirement_name = "boto3-py35"
+    input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
+    with open(input_requirement, "w") as wfh:
+        wfh.write(
+            textwrap.dedent(
+                """\
+            pep8
+            boto3>=1.17.66
+            """
+            )
+        )
+    compiled_requirements = os.path.join(
+        INPUT_REQUIREMENTS_DIR,
+        "py3.5",
+        "{}.txt".format(input_requirement_name),
+    )
+    if os.path.exists(compiled_requirements):
+        os.unlink(compiled_requirements)
+    # Run it through pip-tools-compile
+    retcode = run_command(
+        "pip-tools-compile",
+        "-v",
+        "--platform=linux",
+        "--py-version=3.5",
+        "-vv",
+        input_requirement,
+    )
+    # It should fail
+    assert retcode == 1
+
+    compiled_requirements = os.path.join(
+        INPUT_REQUIREMENTS_DIR,
+        "py3.6",
+        "{}.txt".format(input_requirement_name),
+    )
+    if os.path.exists(compiled_requirements):
+        os.unlink(compiled_requirements)
+    # Run it through pip-tools-compile
+    retcode = run_command(
+        "pip-tools-compile",
+        "-v",
+        "--platform=linux",
+        "--py-version=3.6",
+        "-vv",
+        input_requirement,
+    )
+    # It should NOT fail
+    assert retcode == 0

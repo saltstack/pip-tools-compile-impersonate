@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """
-    pip-tools-compile
-    ~~~~~~~~~~~~~~~~~
+pip-tools-compile
+~~~~~~~~~~~~~~~~~
 
-    Wrapper around pip-tools to "impersonate" different distributions when compiling requirements
+Wrapper around pip-tools to "impersonate" different distributions when compiling requirements
 """
 import argparse
 import atexit
@@ -36,6 +36,21 @@ logging.basicConfig(
 # Import pip-tools Libs
 # Keep a reference to the original DependencyCache class
 from piptools.cache import DependencyCache
+from piptools.repositories import PyPIRepository as _PyPIRepository
+from pip._internal.models.target_python import TargetPython
+
+
+class PyPIRepository(_PyPIRepository):
+    def __init__(self, mocked_python_version, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # We re-initialize self.finder because we want to pass the target_python
+        # which avoids a lot of sys,version_info patching
+        self.finder = self.command._build_package_finder(
+            options=self.options,
+            session=self.session,
+            target_python=TargetPython(py_version_info=mocked_python_version),
+        )
+
 
 real_version_info = sys.version_info
 
@@ -60,18 +75,14 @@ class ImpersonateSystem:
 
     def get_mocks(self):
         yield mock.patch(
-            "pip._internal.utils.misc.sys.version_info",
-            new_callable=mock.PropertyMock(return_value=real_version_info),
-        )
-        yield mock.patch(
             "piptools.scripts.compile.DependencyCache",
             wraps=functools.partial(
                 tweak_piptools_depcache_filename, self._python_version_info, self._platform
             ),
         )
         yield mock.patch(
-            "pip._vendor.packaging.tags.sys.version_info",
-            return_value=self._python_version_info,
+            "piptools.scripts.compile.PyPIRepository",
+            wraps=functools.partial(PyPIRepository, self._python_version_info),
         )
         for toplevel in ("pip._vendor.distlib", "pip._vendor.packaging"):
             yield mock.patch(
@@ -88,12 +99,13 @@ class ImpersonateSystem:
             mock_obj.start()
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *_):
         mock.patch.stopall()
 
 
 def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     depcache = DependencyCache(*args, **kwargs)
+    # pylint: disable=protected-access
     cache_file = os.path.join(
         os.path.dirname(depcache._cache_file),
         "depcache-{}-py{}.{}-mocked-py{}.{}.json".format(
@@ -102,6 +114,7 @@ def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     )
     log.info("Tweaking the pip-tools depcache file to: %s", cache_file)
     depcache._cache_file = cache_file
+    # pylint: enable=protected-access
     if os.environ["PIP_TOOLS_COMPILE_CLEAN_CACHE"] == "1":
         if os.path.exists(cache_file):
             os.unlink(cache_file)
@@ -168,10 +181,6 @@ class ImpersonateDarwin(ImpersonateSystem):
                 "pip._vendor.packaging.markers.platform.version",
                 return_value="Darwin Kernel Version 19.2.0: Sat Nov  9 03:47:04 PST 2019; root:xnu-6153.61.1~20/RELEASE_X86_64",
             )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.python_version",
-                return_value="{}.{}.{}".format(*self._python_version_info),
-            )
 
 
 class ImpersonateLinux(ImpersonateSystem):
@@ -183,9 +192,7 @@ class ImpersonateLinux(ImpersonateSystem):
             # Patch pip's vendored packaging markers
             yield mock.patch(
                 "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(
-                    return_value="linux{}".format("2" if self._python_version_info[0] == 2 else "")
-                ),
+                new_callable=mock.PropertyMock(return_value="linux"),
             )
             yield mock.patch(
                 "pip._vendor.packaging.markers.os.name",
@@ -201,10 +208,6 @@ class ImpersonateLinux(ImpersonateSystem):
             yield mock.patch(
                 "pip._vendor.packaging.markers.platform.version",
                 return_value="#1 SMP Thu Mar 14 15:39:08 CET 2019",
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.python_version",
-                return_value="{}.{}.{}".format(*self._python_version_info),
             )
 
 
@@ -238,10 +241,6 @@ class ImpersonateFreeBSD(ImpersonateSystem):
                     "FreeBSD 14.0-CURRENT #35 main-n246214-78ffcb86d98: Tue Apr 20 10:59:32 CEST 2021     "
                     "root@krion.cc:/usr/obj/usr/src/amd64.amd64/sys/GENERIC"
                 ),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.python_version",
-                return_value="{}.{}.{}".format(*self._python_version_info),
             )
 
 
@@ -335,52 +334,49 @@ def compile_requirement_file(source, dest, options, unknown_args):
 
     original_sys_arg = sys.argv[:]
     success = False
-    with mock.patch(
-        "pip._internal.utils.misc.sys.version_info",
-        new_callable=mock.PropertyMock(return_value=real_version_info),
-    ):
+    try:
+        print("Running: {}".format(" ".join(call_args)))
+        print("  Impersonating: {}".format(options.platform))
+        print("  Mocked Python Version: {}".format(options.py_version))
+        sys.argv = call_args[:]
+        log.debug("Switching sys.argv to: %s", sys.argv)
         try:
-            print("Running: {}".format(" ".join(call_args)))
-            print("  Impersonating: {}".format(options.platform))
-            print("  Mocked Python Version: {}".format(options.py_version))
-            sys.argv = call_args[:]
-            log.debug("Switching sys.argv to: %s", sys.argv)
-            try:
-                import piptools.scripts.compile
+            import piptools.scripts.compile
 
-                piptools.scripts.compile.cli()
-            except SystemExit as exc:
-                if exc.code == 0:
-                    success = True
+            piptools.scripts.compile.cli()
+        except SystemExit as exc:
+            success = exc.code == 0
+            if success is False:
                 print("Failed to compile requirements. Exit code: {}".format(exc.code))
-            except Exception:
-                print("Exception raised when processing {}".format(source))
-                print(traceback.format_exc())
-        finally:
-            if success is True:
-                log.info("Finished compiling %s", dest)
+        except Exception:  # pylint: disable=broad-except
+            success = False
+            print("Exception raised when processing {}".format(source))
+            print(traceback.format_exc())
+    finally:
+        if success is True:
+            log.info("Finished compiling %s", dest)
 
-                if input_rewrites:
-                    with open(dest) as rfh:
-                        dest_contents = rfh.read()
+            if input_rewrites:
+                with open(dest) as rfh:
+                    dest_contents = rfh.read()
 
-                    for input_file, rewriten_file in input_rewrites.items():
-                        if rewriten_file in dest_contents:
-                            dest_contents = dest_contents.replace(rewriten_file, input_file)
+                for input_file, rewriten_file in input_rewrites.items():
+                    if rewriten_file in dest_contents:
+                        dest_contents = dest_contents.replace(rewriten_file, input_file)
 
-                        try:
-                            os.unlink(rewriten_file)
-                        except OSError:
-                            pass
+                    try:
+                        os.unlink(rewriten_file)
+                    except OSError:
+                        pass
 
-                    with open(dest, "w") as wfh:
-                        wfh.write(dest_contents)
-                        for input_file, lines in passthrough_lines.items():
-                            wfh.write("# Passthrough dependencies from {}\n".format(input_file))
-                            for line in lines:
-                                wfh.write("{}\n".format(line))
+                with open(dest, "w") as wfh:
+                    wfh.write(dest_contents)
+                    for input_file, lines in passthrough_lines.items():
+                        wfh.write("# Passthrough dependencies from {}\n".format(input_file))
+                        for line in lines:
+                            wfh.write("{}\n".format(line))
 
-            sys.argv = original_sys_arg
+        sys.argv = original_sys_arg
 
     # Flag success
     return success
@@ -449,7 +445,10 @@ def main():
         "--passthrough-line-from-input",
         default=[],
         action="append",
-        help="Python regular experession to search and remove from the input requirements and append in the destination requirements file",
+        help=(
+            "Python regular expression to search and remove from the input requirements"
+            "and append in the destination requirements file"
+        ),
     )
     parser.add_argument(
         "--clean-cache",
