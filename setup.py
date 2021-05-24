@@ -7,6 +7,8 @@ setup(
         "pip-tools==5.5.0",
         "pip==20.2.4",
         "setuptools-rust",
+        "wheel",
+        "setuptools>=49.6.0",
     ],
     scripts=["pip-tools-compile"],
 )
