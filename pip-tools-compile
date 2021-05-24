@@ -62,6 +62,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
     format="%(asctime)s,%(msecs)03.0f [%(name)-5s:%(lineno)-4d][%(levelname)-8s] %(message)s",
 )
+OS_NAME = os.name
 
 # Import pip-tools Libs
 # Keep a reference to the original DependencyCache class
@@ -213,10 +214,6 @@ class ImpersonateWindows(ImpersonateSystem):
             )
             yield mock.patch(
                 "pip._vendor.packaging.markers.platform.version", return_value="6.3.9600"
-            )
-            yield mock.patch(
-                "pathlib.os.name",
-                new_callable=mock.PropertyMock(return_value=os.name),
             )
             yield mock.patch("pip._internal.utils.glibc.glibc_version_string", return_value=None)
 
@@ -416,9 +413,13 @@ def compile_requirement_file(source, dest, options, unknown_args):
         sys.argv = call_args[:]
         log.debug("Switching sys.argv to: %s", sys.argv)
         try:
-            import piptools.scripts.compile
+            with mock.patch(
+                "os.name",
+                new_callable=mock.PropertyMock(return_value=OS_NAME),
+            ):
+                import piptools.scripts.compile
 
-            piptools.scripts.compile.cli()
+                piptools.scripts.compile.cli()
         except SystemExit as exc:
             success = exc.code == 0
             if success is False:

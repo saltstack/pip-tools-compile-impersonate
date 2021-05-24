@@ -363,3 +363,42 @@ def test_boto3_py35(run_command):
     )
     # It should NOT fail
     assert retcode == 0
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin", "windows"])
+@pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
+def test_pygit2(run_command, platform, python_version):
+    """
+    Test pygit2
+    """
+    input_requirement_name = "pygit2"
+    input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
+    with open(input_requirement, "w") as wfh:
+        wfh.write(
+            textwrap.dedent(
+                """\
+            pygit2>=1.5.0
+            """
+            )
+        )
+    compiled_requirements = os.path.join(
+        INPUT_REQUIREMENTS_DIR,
+        "py{}".format(python_version),
+        "{}.txt".format(input_requirement_name),
+    )
+    if os.path.exists(compiled_requirements):
+        os.unlink(compiled_requirements)
+    # Run it through pip-tools-compile
+    retcode = run_command(
+        "pip-tools-compile",
+        "-v",
+        "--clean-cache",
+        "--platform={}".format(platform),
+        "--py-version={}".format(python_version),
+        "-vv",
+        input_requirement,
+    )
+    assert retcode == 0
+    with open(compiled_requirements) as crfh:
+        compiled_contents = crfh.read()
+    assert "pygit2" in compiled_contents
