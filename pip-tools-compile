@@ -215,13 +215,7 @@ class ImpersonateWindows(ImpersonateSystem):
             yield mock.patch(
                 "pip._vendor.packaging.markers.platform.version", return_value="6.3.9600"
             )
-            yield mock.patch("pip._internal.utils.glibc.glibc_version_string", return_value=None)
-            yield mock.patch(
-                "pip._internal.utils.glibc.glibc_version_string_confstr", return_value=None
-            )
-            yield mock.patch(
-                "pip._internal.utils.glibc.glibc_version_string_ctypes", return_value=None
-            )
+            yield mock.patch("pip._internal.network.session.libc_ver", return_value=("", ""))
             yield mock.patch(
                 "pathlib.os.name",
                 new_callable=mock.PropertyMock(return_value=OS_NAME),
