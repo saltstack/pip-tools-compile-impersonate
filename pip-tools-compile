@@ -216,6 +216,16 @@ class ImpersonateWindows(ImpersonateSystem):
                 "pip._vendor.packaging.markers.platform.version", return_value="6.3.9600"
             )
             yield mock.patch("pip._internal.utils.glibc.glibc_version_string", return_value=None)
+            yield mock.patch(
+                "pip._internal.utils.glibc.glibc_version_string_confstr", return_value=None
+            )
+            yield mock.patch(
+                "pip._internal.utils.glibc.glibc_version_string_ctypes", return_value=None
+            )
+            yield mock.patch(
+                "os.name",
+                new_callable=mock.PropertyMock(return_value=OS_NAME),
+            )
 
 
 class ImpersonateDarwin(ImpersonateSystem):
@@ -413,13 +423,9 @@ def compile_requirement_file(source, dest, options, unknown_args):
         sys.argv = call_args[:]
         log.debug("Switching sys.argv to: %s", sys.argv)
         try:
-            with mock.patch(
-                "os.name",
-                new_callable=mock.PropertyMock(return_value=OS_NAME),
-            ):
-                import piptools.scripts.compile
+            import piptools.scripts.compile
 
-                piptools.scripts.compile.cli()
+            piptools.scripts.compile.cli()
         except SystemExit as exc:
             success = exc.code == 0
             if success is False:
