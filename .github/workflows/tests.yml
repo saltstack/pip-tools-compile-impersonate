@@ -94,3 +94,22 @@ jobs:
     - name: Test
       run: |
         nox --forcecolor -e tests-3
+
+  FreeBSD:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+
+    continue-on-error: true
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Test
+      uses: vmactions/freebsd-vm@v0.1.4
+      with:
+        prepare: |
+          pkg install -y py37-pip
+          pip-3.7 install nox
+        run: |
+          nox --forcecolor -e patch-info
+          nox --forcecolor -e tests-3
