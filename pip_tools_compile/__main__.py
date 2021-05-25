@@ -20,36 +20,7 @@ import traceback
 from collections import namedtuple
 from unittest import mock
 
-try:
-    from importlib.metadata import version, PackageNotFoundError
-
-    try:
-        __version__ = version("pip-tools-compile")
-    except PackageNotFoundError:
-        # package is not installed
-        pass
-except ImportError:
-    try:
-        from importlib_metadata import version, PackageNotFoundError
-
-        try:
-            __version__ = version("pip-tools-compile")
-        except PackageNotFoundError:
-            # package is not installed
-            pass
-    except ImportError:
-        try:
-            from pkg_resources import get_distribution, DistributionNotFound
-
-            try:
-                __version__ = get_distribution("pip-tools-compile").version
-            except DistributionNotFound:
-                # package is not installed
-                pass
-        except ImportError:
-            # pkg resources isn't even available?!
-            pass
-
+from pip_tools_compile import __version__
 
 SYSTEM = platform.system().lower()
 CAPTURE_OUTPUT = os.environ.get("CAPTURE_OUTPUT", "1") == "1"
@@ -64,11 +35,13 @@ logging.basicConfig(
 )
 OS_NAME = os.name
 
-# Import pip-tools Libs
 # Keep a reference to the original DependencyCache class
 from piptools.cache import DependencyCache
 from piptools.repositories import PyPIRepository as _PyPIRepository
 from pip._internal.models.target_python import TargetPython as _TargetPython
+from pip._vendor.packaging.markers import default_environment
+
+DEFAULT_ENVIRONMENT = default_environment()
 
 
 class PyPIRepository(_PyPIRepository):
@@ -155,18 +128,19 @@ class ImpersonateSystem:
             "piptools.scripts.compile.PyPIRepository",
             wraps=functools.partial(PyPIRepository, self._python_version_info, self._platform),
         )
-        for toplevel in ("pip._vendor.distlib", "pip._vendor.packaging"):
-            yield mock.patch(
-                "{}.markers.platform.python_version".format(toplevel),
-                return_value="{}.{}.{}".format(*self._python_version_info),
-            )
-            yield mock.patch(
-                "{}.markers.platform.python_version_tuple".format(toplevel),
-                return_value=tuple(str(part) for part in self._python_version_info),
-            )
+        yield mock.patch(
+            "pip._vendor.packaging.markers.default_environment",
+            wraps=functools.partial(tweak_packaging_markers, self),
+        )
+        yield mock.patch(
+            "pip._vendor.distlib.markers.DEFAULT_CONTEXT",
+            new_callable=mock.PropertyMock(return_value=tweak_packaging_markers(self)),
+        )
 
     def __enter__(self):
         for mock_obj in self.get_mocks():
+            if mock_obj is None:
+                continue
             mock_obj.start()
         return self
 
@@ -192,43 +166,50 @@ def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     return depcache
 
 
+def tweak_packaging_markers(impersonation):
+    environment = DEFAULT_ENVIRONMENT.copy()
+    environment["os_name"] = impersonation.os_name
+    environment["platform_machine"] = impersonation.platform_machine
+    environment["platform_release"] = impersonation.platform_release
+    environment["platform_system"] = impersonation.platform_system
+    environment["platform_version"] = impersonation.platform_version
+    environment["python_version"] = "{}.{}".format(*impersonation._python_version_info)
+    environment["python_full_version"] = "{}.{}.{}".format(*impersonation._python_version_info)
+    environment["implementation_version"] = environment["python_full_version"]
+    environment["sys_platform"] = impersonation._platform
+    return environment
+
+
 class ImpersonateWindows(ImpersonateSystem):
+    os_name = "nt"
+    platform_machine = "AMD64"
+    platform_release = "8.1"
+    platform_system = "Windows"
+    platform_version = "6.3.9600"
+
     def get_mocks(self):
         yield from super().get_mocks()
         if SYSTEM != "windows":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            ## Patch pip's vendored packaging markers
-            yield mock.patch(
-                "pip._vendor.packaging.markers.os.name",
-                new_callable=mock.PropertyMock(return_value="nt"),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(return_value=self._platform),
-            )
-            yield mock.patch("pip._vendor.packaging.markers.platform.machine", return_value="AMD64")
-            yield mock.patch("pip._vendor.packaging.markers.platform.release", return_value="8.1")
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.system", return_value="Windows"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.version", return_value="6.3.9600"
-            )
             yield mock.patch("pip._internal.network.session.libc_ver", return_value=("", ""))
-            yield mock.patch(
-                "pathlib.os.name",
-                new_callable=mock.PropertyMock(return_value=OS_NAME),
-            )
 
 
 class ImpersonateDarwin(ImpersonateSystem):
+    os_name = "posix"
+    platform_machine = "x86_64"
+    platform_release = "19.2.0"
+    platform_system = "Darwin"
+    platform_version = "Darwin Kernel Version 19.2.0: Sat Nov  9 03:47:04 PST 2019; root:xnu-6153.61.1~20/RELEASE_X86_64"
+
     def get_mocks(self):
         yield from super().get_mocks()
         if SYSTEM != "darwin":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            yield mock.patch("pip._vendor.packaging.tags.platform.system", return_value="Darwin")
+            yield mock.patch(
+                "pip._vendor.packaging.tags.platform.system", return_value=self.platform_system
+            )
             yield mock.patch(
                 "pip._vendor.packaging.tags.distutils.util.get_platform",
                 return_value="macosx_10_15_x86_64",
@@ -237,87 +218,37 @@ class ImpersonateDarwin(ImpersonateSystem):
                 "pip._vendor.packaging.tags.platform.mac_ver",
                 return_value=("10.15", None, "x86_64"),
             )
-            # Patch pip's vendored packaging markers
-            yield mock.patch(
-                "pip._vendor.packaging.markers.os.name",
-                new_callable=mock.PropertyMock(return_value="posix"),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(return_value=self._platform),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.machine", return_value="x86_64"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.release", return_value="19.2.0"
-            )
-            yield mock.patch("pip._vendor.packaging.markers.platform.system", return_value="Darwin")
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.version",
-                return_value="Darwin Kernel Version 19.2.0: Sat Nov  9 03:47:04 PST 2019; root:xnu-6153.61.1~20/RELEASE_X86_64",
-            )
 
 
 class ImpersonateLinux(ImpersonateSystem):
+    os_name = "posix"
+    platform_machine = "x86_64"
+    platform_release = "4.19.29-1-lts"
+    platform_system = "Linux"
+    platform_version = "#1 SMP Thu Mar 14 15:39:08 CET 2019"
+
     def get_mocks(self):
         yield from super().get_mocks()
         if SYSTEM != "linux":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            # Patch pip's vendored packaging markers
-            yield mock.patch(
-                "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(return_value=self._platform),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.os.name",
-                new_callable=mock.PropertyMock(return_value="posix"),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.machine", return_value="x86_64"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.release", return_value="4.19.29-1-lts"
-            )
-            yield mock.patch("pip._vendor.packaging.markers.platform.system", return_value="Linux")
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.version",
-                return_value="#1 SMP Thu Mar 14 15:39:08 CET 2019",
-            )
 
 
 class ImpersonateFreeBSD(ImpersonateSystem):
+    os_name = "posix"
+    platform_machine = "x86_64"
+    platform_release = "14.0-CURRENT"
+    platform_system = "FreeBSD"
+    platform_version = (
+        "FreeBSD 14.0-CURRENT #35 main-n246214-78ffcb86d98: Tue Apr 20 10:59:32 CEST 2021     "
+        "root@krion.cc:/usr/obj/usr/src/amd64.amd64/sys/GENERIC"
+    )
+
     def get_mocks(self):
         yield from super().get_mocks()
         if SYSTEM != "freebsd":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            # Patch pip's vendored packaging markers
-            yield mock.patch(
-                "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(return_value=self._platform),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.os.name",
-                new_callable=mock.PropertyMock(return_value="posix"),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.machine", return_value="x86_64"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.release", return_value="14.0-CURRENT"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.system", return_value="FreeBSD"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.version",
-                return_value=(
-                    "FreeBSD 14.0-CURRENT #35 main-n246214-78ffcb86d98: Tue Apr 20 10:59:32 CEST 2021     "
-                    "root@krion.cc:/usr/obj/usr/src/amd64.amd64/sys/GENERIC"
-                ),
-            )
 
 
 class CatureSTDs:

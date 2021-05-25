@@ -4,12 +4,15 @@
 
     Test Static Compilation
 """
+import logging
 import os
 import shutil
 import sys
 import textwrap
 
 import pytest
+
+log = logging.getLogger(__name__)
 
 PYVER = "{}.{}".format(*sys.version_info)
 TARGET_PLATFORMS = ("linux", "windows", "darwin")
@@ -103,6 +106,7 @@ def test_markers(run_command, platform, marker, expected):
                 ],
             )
         )
+    log.info("Input Requirements:\n---------\n%s\n---------", open(input_requirement).read())
     compiled_requirements = os.path.join(
         INPUT_REQUIREMENTS_DIR,
         "py{}.{}".format(*sys.version_info),
