@@ -50,3 +50,12 @@ def patch_info(session):
     else:
         session.install(".")
     session.run("pip-tools-compile", "--show-info-to-patch")
+
+
+@nox.session(name="patch-info-system", python=False)
+def patch_info_system(session):
+    if IS_WINDOWS:
+        session.run("python", "-m", "pip", "install", ".")
+    else:
+        session.install(".")
+    session.run("pip-tools-compile", "--show-info-to-patch")

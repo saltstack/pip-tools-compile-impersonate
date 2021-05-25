@@ -111,5 +111,5 @@ jobs:
           pkg install -y py37-pip
           pip-3.7 install nox
         run: |
-          nox --forcecolor -e patch-info
-          nox --forcecolor -e tests-3
+          nox --forcecolor -e patch-info-system
+          nox --forcecolor -e tests-system
