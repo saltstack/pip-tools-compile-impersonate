@@ -46,8 +46,6 @@ jobs:
           - "3.9"
           - "3.10.0-alpha.6"
 
-    continue-on-error: true
-
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -77,8 +75,6 @@ jobs:
           - "3.9"
           - "3.10.0-alpha.6"
 
-    continue-on-error: true
-
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -99,8 +95,6 @@ jobs:
     runs-on: macos-latest
     strategy:
       fail-fast: false
-
-    continue-on-error: true
 
     steps:
     - uses: actions/checkout@v2
