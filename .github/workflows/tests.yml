@@ -108,8 +108,10 @@ jobs:
       uses: vmactions/freebsd-vm@v0.1.4
       with:
         prepare: |
-          pkg install -y py37-pip
-          pip-3.7 install nox
+          pkg install -y py37-pip git
+          ln -sf /usr/local/bin/python3.7 /usr/local/bin/python
+          ln -sf /usr/local/bin/python3.7 /usr/local/bin/python3
+          python -m pip install nox
         run: |
-          nox --forcecolor -e patch-info-system
-          nox --forcecolor -e tests-system
+          nox --forcecolor -e patch-info
+          nox --forcecolor -e tests-3
