@@ -20,36 +20,7 @@ import traceback
 from collections import namedtuple
 from unittest import mock
 
-try:
-    from importlib.metadata import version, PackageNotFoundError
-
-    try:
-        __version__ = version("pip-tools-compile")
-    except PackageNotFoundError:
-        # package is not installed
-        pass
-except ImportError:
-    try:
-        from importlib_metadata import version, PackageNotFoundError
-
-        try:
-            __version__ = version("pip-tools-compile")
-        except PackageNotFoundError:
-            # package is not installed
-            pass
-    except ImportError:
-        try:
-            from pkg_resources import get_distribution, DistributionNotFound
-
-            try:
-                __version__ = get_distribution("pip-tools-compile").version
-            except DistributionNotFound:
-                # package is not installed
-                pass
-        except ImportError:
-            # pkg resources isn't even available?!
-            pass
-
+from pip_tools_compile import __version__
 
 SYSTEM = platform.system().lower()
 CAPTURE_OUTPUT = os.environ.get("CAPTURE_OUTPUT", "1") == "1"
@@ -63,11 +34,13 @@ logging.basicConfig(
     format="%(asctime)s,%(msecs)03.0f [%(name)-5s:%(lineno)-4d][%(levelname)-8s] %(message)s",
 )
 
-# Import pip-tools Libs
 # Keep a reference to the original DependencyCache class
 from piptools.cache import DependencyCache
 from piptools.repositories import PyPIRepository as _PyPIRepository
 from pip._internal.models.target_python import TargetPython as _TargetPython
+from pip._vendor.packaging.markers import default_environment
+
+DEFAULT_ENVIRONMENT = default_environment()
 
 
 class PyPIRepository(_PyPIRepository):
@@ -121,7 +94,7 @@ class TargetPython(_TargetPython):
 real_version_info = sys.version_info
 
 
-log = logging.getLogger(os.path.basename(__file__))
+log = logging.getLogger("pip-tools-compile")
 
 version_info = namedtuple("version_info", ["major", "minor", "micro", "releaselevel", "serial"])
 
@@ -154,18 +127,19 @@ class ImpersonateSystem:
             "piptools.scripts.compile.PyPIRepository",
             wraps=functools.partial(PyPIRepository, self._python_version_info, self._platform),
         )
-        for toplevel in ("pip._vendor.distlib", "pip._vendor.packaging"):
-            yield mock.patch(
-                "{}.markers.platform.python_version".format(toplevel),
-                return_value="{}.{}.{}".format(*self._python_version_info),
-            )
-            yield mock.patch(
-                "{}.markers.platform.python_version_tuple".format(toplevel),
-                return_value=tuple(str(part) for part in self._python_version_info),
-            )
+        yield mock.patch(
+            "pip._vendor.packaging.markers.default_environment",
+            wraps=functools.partial(tweak_packaging_markers, self),
+        )
+        yield mock.patch(
+            "pip._vendor.distlib.markers.DEFAULT_CONTEXT",
+            new_callable=mock.PropertyMock(return_value=tweak_packaging_markers(self)),
+        )
 
     def __enter__(self):
         for mock_obj in self.get_mocks():
+            if mock_obj is None:
+                continue
             mock_obj.start()
         return self
 
@@ -191,126 +165,104 @@ def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     return depcache
 
 
+def tweak_packaging_markers(impersonation):
+    environment = DEFAULT_ENVIRONMENT.copy()
+    environment["os_name"] = impersonation.os_name
+    environment["platform_machine"] = impersonation.platform_machine
+    environment["platform_release"] = impersonation.platform_release
+    environment["platform_system"] = impersonation.platform_system
+    environment["platform_version"] = impersonation.platform_version
+    environment["python_version"] = "{}.{}".format(*impersonation._python_version_info)
+    environment["python_full_version"] = "{}.{}.{}".format(*impersonation._python_version_info)
+    environment["implementation_version"] = environment["python_full_version"]
+    environment["sys_platform"] = impersonation._platform
+    return environment
+
+
 class ImpersonateWindows(ImpersonateSystem):
+    os_name = "nt"
+    platform_machine = "AMD64"
+    platform_release = "8.1"
+    platform_system = "Windows"
+    platform_version = "6.3.9600"
+
     def get_mocks(self):
         yield from super().get_mocks()
         if SYSTEM != "windows":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            ## Patch pip's vendored packaging markers
+            yield mock.patch("pip._internal.network.session.libc_ver", return_value=("", ""))
             yield mock.patch(
-                "pip._vendor.packaging.markers.os.name",
-                new_callable=mock.PropertyMock(return_value="nt"),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(return_value=self._platform),
-            )
-            yield mock.patch("pip._vendor.packaging.markers.platform.machine", return_value="AMD64")
-            yield mock.patch("pip._vendor.packaging.markers.platform.release", return_value="8.1")
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.system", return_value="Windows"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.version", return_value="6.3.9600"
+                "pip._vendor.packaging.tags._platform_tags", return_value=["win_amd64"]
             )
 
 
 class ImpersonateDarwin(ImpersonateSystem):
+    os_name = "posix"
+    platform_machine = "x86_64"
+    platform_release = "19.2.0"
+    platform_system = "Darwin"
+    platform_version = "Darwin Kernel Version 19.2.0: Sat Nov  9 03:47:04 PST 2019; root:xnu-6153.61.1~20/RELEASE_X86_64"
+
     def get_mocks(self):
         yield from super().get_mocks()
         if SYSTEM != "darwin":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            yield mock.patch("pip._vendor.packaging.tags.platform.system", return_value="Darwin")
-            yield mock.patch(
-                "pip._vendor.packaging.tags.distutils.util.get_platform",
-                return_value="macosx_10_15_x86_64",
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.tags.platform.mac_ver",
-                return_value=("10.15", None, "x86_64"),
-            )
-            # Patch pip's vendored packaging markers
-            yield mock.patch(
-                "pip._vendor.packaging.markers.os.name",
-                new_callable=mock.PropertyMock(return_value="posix"),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(return_value=self._platform),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.machine", return_value="x86_64"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.release", return_value="19.2.0"
-            )
-            yield mock.patch("pip._vendor.packaging.markers.platform.system", return_value="Darwin")
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.version",
-                return_value="Darwin Kernel Version 19.2.0: Sat Nov  9 03:47:04 PST 2019; root:xnu-6153.61.1~20/RELEASE_X86_64",
-            )
+            tags = []
+            for version in range(4, 16):
+                for cpu in ("fat32", "fat64", "intel", "universal", "x86_64"):
+                    tags.append("macosx_10_{}_{}".format(version, cpu))
+            yield mock.patch("pip._vendor.packaging.tags._platform_tags", return_value=tags)
 
 
 class ImpersonateLinux(ImpersonateSystem):
+    os_name = "posix"
+    platform_machine = "x86_64"
+    platform_release = "4.19.29-1-lts"
+    platform_system = "Linux"
+    platform_version = "#1 SMP Thu Mar 14 15:39:08 CET 2019"
+
     def get_mocks(self):
         yield from super().get_mocks()
         if SYSTEM != "linux":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            # Patch pip's vendored packaging markers
             yield mock.patch(
-                "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(return_value=self._platform),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.os.name",
-                new_callable=mock.PropertyMock(return_value="posix"),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.machine", return_value="x86_64"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.release", return_value="4.19.29-1-lts"
-            )
-            yield mock.patch("pip._vendor.packaging.markers.platform.system", return_value="Linux")
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.version",
-                return_value="#1 SMP Thu Mar 14 15:39:08 CET 2019",
+                "pip._vendor.packaging.tags._platform_tags",
+                return_value=[
+                    "linux_x86_64",
+                    "manylinux1_x86_64",
+                    "manylinux2010_x86_64",
+                    "manylinux2014_x86_64",
+                ],
             )
 
 
 class ImpersonateFreeBSD(ImpersonateSystem):
+    os_name = "posix"
+    platform_machine = "x86_64"
+    platform_release = "14.0-CURRENT"
+    platform_system = "FreeBSD"
+    platform_version = (
+        "FreeBSD 14.0-CURRENT #35 main-n246214-78ffcb86d98: Tue Apr 20 10:59:32 CEST 2021     "
+        "root@krion.cc:/usr/obj/usr/src/amd64.amd64/sys/GENERIC"
+    )
+
     def get_mocks(self):
         yield from super().get_mocks()
         if SYSTEM != "freebsd":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            # Patch pip's vendored packaging markers
             yield mock.patch(
-                "pip._vendor.packaging.markers.sys.platform",
-                new_callable=mock.PropertyMock(return_value=self._platform),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.os.name",
-                new_callable=mock.PropertyMock(return_value="posix"),
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.machine", return_value="x86_64"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.release", return_value="14.0-CURRENT"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.system", return_value="FreeBSD"
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.markers.platform.version",
-                return_value=(
-                    "FreeBSD 14.0-CURRENT #35 main-n246214-78ffcb86d98: Tue Apr 20 10:59:32 CEST 2021     "
-                    "root@krion.cc:/usr/obj/usr/src/amd64.amd64/sys/GENERIC"
-                ),
+                "pip._vendor.packaging.tags._platform_tags",
+                return_value=[
+                    "{}_{}_{}".format(
+                        self.platform_system.lower(),
+                        self.platform_release.replace("-", "_").replace(".", "_"),
+                        self.platform_machine,
+                    )
+                ],
             )
 
 
@@ -453,40 +405,15 @@ def compile_requirement_file(source, dest, options, unknown_args):
 
 
 def show_info_to_patch():
-    import pprint
-    import platform
-
     print("Generating information under {}\n".format(platform.system()))
-    patch_data = (
-        ("pip._vendor.packaging.markers", "platform.python_version"),
-        ("pip._vendor.packaging.markers", "os.name"),
-        ("pip._vendor.packaging.markers", "sys.platform"),
-        ("pip._vendor.packaging.markers", "platform.machine"),
-        ("pip._vendor.packaging.markers", "platform.release"),
-        ("pip._vendor.packaging.markers", "platform.system"),
-        ("pip._vendor.packaging.markers", "platform.version"),
-    )
-    real_data = {}
-    for module, function in patch_data:
-        if module not in real_data:
-            real_data[module] = {}
-        mod = __import__(module)
-        mod_parts = module.split(".")
-        mod_parts.pop(0)
-        while mod_parts:
-            part = mod_parts.pop(0)
-            mod = getattr(mod, part)
-        func_parts = function.split(".")
-        func = mod
-        while func_parts:
-            part = func_parts.pop(0)
-            func = getattr(func, part)
-        data = func
-        if callable(data):
-            data = data()
-        real_data[module][function] = data
+    print(" * pip._vendor.packaging.markers.default_environment() output:")
+    for key in sorted(DEFAULT_ENVIRONMENT):
+        print("  * {}: '{}'".format(key, DEFAULT_ENVIRONMENT[key]))
+    import pip._vendor.packaging.tags
 
-    pprint.pprint(real_data)
+    print(" * pip._vendor.packaging.tags._platform_tags:")
+    for tag in sorted(pip._vendor.packaging.tags._platform_tags()):
+        print("  * '{}'".format(tag))
 
 
 def main():
@@ -542,9 +469,9 @@ def main():
     if SYSTEM == "windows":
         print(
             "\n"
-            "============================================================================\n"
-            "  Windows Is Not Supported. Please Run In A Linux Docker Container Instead  \n"
-            "============================================================================\n",
+            "===================================================================================================\n"
+            "  Windows Preliminary Support. Please Run In A Linux Docker Container Instead In Case Of Problems  \n"
+            "===================================================================================================\n"
             "\n",
             file=sys.stderr,
         )
@@ -552,9 +479,9 @@ def main():
     if SYSTEM == "darwin":
         print(
             "\n"
-            "==========================================================================\n"
-            "  macOS Is Not Supported. Please Run In A Linux Docker Container Instead  \n"
-            "==========================================================================\n",
+            "=================================================================================================\n"
+            "  macOS Preliminary Support. Please Run In A Linux Docker Container Instead In Case Of Problems  \n"
+            "=================================================================================================\n"
             "\n",
             file=sys.stderr,
         )
@@ -562,9 +489,9 @@ def main():
     if sys.version_info >= (3, 10):
         print(
             "\n"
-            "======================================\n"
-            "  Py3.10+ Is Not Currently Supported  \n"
-            "======================================\n",
+            "=============================================================================\n"
+            "  Py3.10+ Preliminary Support. Please Run Under Py<3.10 In Case Of Problems  \n"
+            "=============================================================================\n"
             "\n",
             file=sys.stderr,
         )
@@ -629,6 +556,14 @@ def main():
                         print("Error log file at {}".format(error_logfile))
                     continue
 
+                if SYSTEM == "windows":
+                    with open(outfile_path) as rfh:
+                        contents = re.sub(
+                            "'([^']*)'", r"\1", rfh.read().replace("\\", "/"), re.MULTILINE
+                        )
+                    with open(outfile_path, "w") as wfh:
+                        wfh.write(contents)
+
                 if not regexes:
                     continue
 
@@ -653,8 +588,9 @@ def main():
                             break
                     out_contents.append(line)
 
+                out_contents = os.linesep.join(out_contents) + os.linesep
                 with open(outfile_path, "w") as wfh:
-                    wfh.write(os.linesep.join(out_contents) + os.linesep)
+                    wfh.write(out_contents)
 
             if exitcode:
                 stdout = capstds.stdout
