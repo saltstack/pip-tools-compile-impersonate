@@ -192,6 +192,9 @@ class ImpersonateWindows(ImpersonateSystem):
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch("pip._internal.network.session.libc_ver", return_value=("", ""))
+            yield mock.patch(
+                "pip._vendor.packaging.tags._platform_tags", return_value=["win_amd64"]
+            )
 
 
 class ImpersonateDarwin(ImpersonateSystem):
@@ -206,17 +209,11 @@ class ImpersonateDarwin(ImpersonateSystem):
         if SYSTEM != "darwin":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
-            yield mock.patch(
-                "pip._vendor.packaging.tags.platform.system", return_value=self.platform_system
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.tags.distutils.util.get_platform",
-                return_value="macosx_10_15_x86_64",
-            )
-            yield mock.patch(
-                "pip._vendor.packaging.tags.platform.mac_ver",
-                return_value=("10.15", None, "x86_64"),
-            )
+            tags = []
+            for version in range(4, 16):
+                for cpu in ("fat32", "fat64", "intel", "universal", "x86_64"):
+                    tags.append("macosx_10_{}_{}".format(version, cpu))
+            yield mock.patch("pip._vendor.packaging.tags._platform_tags", return_value=tags)
 
 
 class ImpersonateLinux(ImpersonateSystem):
@@ -231,6 +228,15 @@ class ImpersonateLinux(ImpersonateSystem):
         if SYSTEM != "linux":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
+            yield mock.patch(
+                "pip._vendor.packaging.tags._platform_tags",
+                return_value=[
+                    "linux_x86_64",
+                    "manylinux1_x86_64",
+                    "manylinux2010_x86_64",
+                    "manylinux2014_x86_64",
+                ],
+            )
 
 
 class ImpersonateFreeBSD(ImpersonateSystem):
@@ -248,6 +254,16 @@ class ImpersonateFreeBSD(ImpersonateSystem):
         if SYSTEM != "freebsd":
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
+            yield mock.patch(
+                "pip._vendor.packaging.tags._platform_tags",
+                return_value=[
+                    "{}_{}_{}".format(
+                        self.platform_system.lower(),
+                        self.platform_release.replace("-", "_").replace(".", "_"),
+                        self.platform_machine,
+                    )
+                ],
+            )
 
 
 class CatureSTDs:
