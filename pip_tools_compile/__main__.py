@@ -453,9 +453,9 @@ def main():
     if SYSTEM == "windows":
         print(
             "\n"
-            "============================================================================\n"
-            "  Windows Is Not Supported. Please Run In A Linux Docker Container Instead  \n"
-            "============================================================================\n",
+            "===================================================================================================\n"
+            "  Windows Preliminary Support. Please Run In A Linux Docker Container Instead In Case Of Problems  \n"
+            "===================================================================================================\n"
             "\n",
             file=sys.stderr,
         )
@@ -463,9 +463,9 @@ def main():
     if SYSTEM == "darwin":
         print(
             "\n"
-            "==========================================================================\n"
-            "  macOS Is Not Supported. Please Run In A Linux Docker Container Instead  \n"
-            "==========================================================================\n",
+            "=================================================================================================\n"
+            "  macOS Preliminary Support. Please Run In A Linux Docker Container Instead In Case Of Problems  \n"
+            "=================================================================================================\n"
             "\n",
             file=sys.stderr,
         )
@@ -473,9 +473,9 @@ def main():
     if sys.version_info >= (3, 10):
         print(
             "\n"
-            "======================================\n"
-            "  Py3.10+ Is Not Currently Supported  \n"
-            "======================================\n",
+            "=============================================================================\n"
+            "  Py3.10+ Preliminary Support. Please Run Under Py<3.10 In Case Of Problems  \n"
+            "=============================================================================\n"
             "\n",
             file=sys.stderr,
         )
