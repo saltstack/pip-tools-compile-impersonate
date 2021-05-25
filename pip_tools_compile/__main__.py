@@ -12,7 +12,6 @@ import io
 import logging
 import os
 import platform
-import pprint
 import re
 import shutil
 import sys
@@ -95,7 +94,7 @@ class TargetPython(_TargetPython):
 real_version_info = sys.version_info
 
 
-log = logging.getLogger(os.path.basename(__file__))
+log = logging.getLogger("pip-tools-compile")
 
 version_info = namedtuple("version_info", ["major", "minor", "micro", "releaselevel", "serial"])
 
@@ -541,6 +540,14 @@ def main():
                         print("Error log file at {}".format(error_logfile))
                     continue
 
+                if SYSTEM == "windows":
+                    with open(outfile_path) as rfh:
+                        contents = re.sub(
+                            "'([^']*)'", r"\1", rfh.read().replace("\\", "/"), re.MULTILINE
+                        )
+                    with open(outfile_path, "w") as wfh:
+                        wfh.write(contents)
+
                 if not regexes:
                     continue
 
@@ -565,8 +572,9 @@ def main():
                             break
                     out_contents.append(line)
 
+                out_contents = os.linesep.join(out_contents) + os.linesep
                 with open(outfile_path, "w") as wfh:
-                    wfh.write(os.linesep.join(out_contents) + os.linesep)
+                    wfh.write(out_contents)
 
             if exitcode:
                 stdout = capstds.stdout

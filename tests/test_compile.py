@@ -6,7 +6,7 @@
 """
 import logging
 import os
-import shutil
+import re
 import sys
 import textwrap
 
