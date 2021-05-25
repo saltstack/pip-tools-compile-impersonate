@@ -12,6 +12,7 @@ import io
 import logging
 import os
 import platform
+import pprint
 import re
 import shutil
 import sys
@@ -33,7 +34,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
     format="%(asctime)s,%(msecs)03.0f [%(name)-5s:%(lineno)-4d][%(levelname)-8s] %(message)s",
 )
-OS_NAME = os.name
 
 # Keep a reference to the original DependencyCache class
 from piptools.cache import DependencyCache
@@ -390,40 +390,15 @@ def compile_requirement_file(source, dest, options, unknown_args):
 
 
 def show_info_to_patch():
-    import pprint
-    import platform
-
     print("Generating information under {}\n".format(platform.system()))
-    patch_data = (
-        ("pip._vendor.packaging.markers", "platform.python_version"),
-        ("pip._vendor.packaging.markers", "os.name"),
-        ("pip._vendor.packaging.markers", "sys.platform"),
-        ("pip._vendor.packaging.markers", "platform.machine"),
-        ("pip._vendor.packaging.markers", "platform.release"),
-        ("pip._vendor.packaging.markers", "platform.system"),
-        ("pip._vendor.packaging.markers", "platform.version"),
-    )
-    real_data = {}
-    for module, function in patch_data:
-        if module not in real_data:
-            real_data[module] = {}
-        mod = __import__(module)
-        mod_parts = module.split(".")
-        mod_parts.pop(0)
-        while mod_parts:
-            part = mod_parts.pop(0)
-            mod = getattr(mod, part)
-        func_parts = function.split(".")
-        func = mod
-        while func_parts:
-            part = func_parts.pop(0)
-            func = getattr(func, part)
-        data = func
-        if callable(data):
-            data = data()
-        real_data[module][function] = data
+    print(" * pip._vendor.packaging.markers.default_environment() output:")
+    for key in sorted(DEFAULT_ENVIRONMENT):
+        print("  * {}: '{}'".format(key, DEFAULT_ENVIRONMENT[key]))
+    import pip._vendor.packaging.tags
 
-    pprint.pprint(real_data)
+    print(" * pip._vendor.packaging.tags._platform_tags:")
+    for tag in sorted(pip._vendor.packaging.tags._platform_tags()):
+        print("  * '{}'".format(tag))
 
 
 def main():

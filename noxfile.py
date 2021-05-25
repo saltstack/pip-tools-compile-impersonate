@@ -41,3 +41,12 @@ def tests_system(session):
     session.run("python", "-m", "pip", "install", ".")
     session.run("python", "-m", "pip", "install", "pytest")
     session.run("python", "-m", "pytest", "-ra", "-s", "-vv", "tests", *session.posargs)
+
+
+@nox.session(name="patch-info", python="3")
+def patch_info(session):
+    if IS_WINDOWS:
+        session.run("python", "-m", "pip", "install", ".")
+    else:
+        session.install(".")
+    session.run("pip-tools-compile", "--show-info-to-patch")
