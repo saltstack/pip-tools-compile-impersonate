@@ -318,7 +318,10 @@ def compile_requirement_file(source, dest, options, unknown_args):
 
     call_args = ["pip-compile", "-o", dest]
     if unknown_args:
-        call_args += unknown_args
+        for unknown_arg in unknown_args:
+            if "{py_version}" in unknown_arg:
+                unknown_arg = unknown_arg.format(py_version=options.py_version)
+            call_args.append(unknown_arg)
     if options.include:
         includes = []
         for input_file in options.include:
