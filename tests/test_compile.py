@@ -381,7 +381,8 @@ def test_pygit2(run_command, platform, python_version):
         wfh.write(
             textwrap.dedent(
                 """\
-            pygit2>=1.5.0
+            pygit2<1.1.0; python_version <= '3.8'
+            pygit2>=1.5.0; python_version > '3.8'
             """
             )
         )
