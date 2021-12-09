@@ -76,8 +76,9 @@ class RunCommand:
             cmdline,
             shell=False,
             check=False,
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
             cwd=REPO_ROOT,
             env=self.environ,
         )
