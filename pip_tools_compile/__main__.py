@@ -101,9 +101,9 @@ version_info = namedtuple("version_info", ["major", "minor", "micro", "releasele
 
 class ImpersonateSystem:
 
-    __slots__ = ("_python_version_info", "_platform")
+    __slots__ = ("_python_version_info", "_platform", "platform_machine")
 
-    def __init__(self, python_version_info, platform):
+    def __init__(self, python_version_info, platform, machine=None):
         parts = [int(part) for part in python_version_info.split(".") if part.isdigit()]
         python_version_info = list(sys.version_info)
         for idx, part in enumerate(parts):
@@ -115,6 +115,9 @@ class ImpersonateSystem:
         if platform == "freebsd":
             platform = "freebsd14"
         self._platform = platform
+        if machine is not None:
+            assert machine.lower() in ("arm64", "amd64", "x86_64")
+            self.platform_machine = machine
 
     def get_mocks(self):
         yield mock.patch(
@@ -361,6 +364,8 @@ def compile_requirement_file(source, dest, options, unknown_args):
     success = False
     try:
         print("Running: {}".format(" ".join(call_args)))
+        if options.machine:
+            print("  Impersonating CPU: {}".format(options.machine))
         print("  Impersonating: {}".format(options.platform))
         print("  Mocked Python Version: {}".format(options.py_version))
         sys.argv = call_args[:]
@@ -430,6 +435,11 @@ def main():
         "--platform",
         choices=("windows", "darwin", "linux", "freebsd"),
         default=platform.system().lower(),
+    )
+    parser.add_argument(
+        "--machine",
+        choices=("amd64", "arm64", "x86_64"),
+        default=None,
     )
     parser.add_argument("--py-version", default="{}.{}".format(*sys.version_info))
     parser.add_argument("--include", action="append", default=[])
@@ -514,7 +524,9 @@ def main():
     exitcode = 0
 
     with CatureSTDs() as capstds:
-        with impersonations[options.platform](options.py_version, options.platform):
+        with impersonations[options.platform](
+            options.py_version, options.platform, options.machine
+        ):
             import piptools.scripts.compile
 
             for fpath in options.files:
