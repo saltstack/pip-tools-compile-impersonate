@@ -407,3 +407,71 @@ def test_pygit2(run_command, platform, python_version):
     with open(compiled_requirements) as crfh:
         compiled_contents = crfh.read()
     assert "pygit2" in compiled_contents
+    if python_version in ("3.5", "3.6", "3.7"):
+        assert "cached-property" in compiled_contents
+    else:
+        assert "cached-property" not in compiled_contents
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin", "windows"])
+@pytest.mark.parametrize("machine", ["amd64", "arm64", None])
+@pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
+def test_platform_machine(run_command, platform, machine, python_version):
+    """
+    Test platform machine
+    """
+    input_requirement_name = "pygit2"
+    input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
+    with open(input_requirement, "w") as wfh:
+        wfh.write(
+            textwrap.dedent(
+                """\
+            pygit2==1.5.0; python_version < "3.9"
+            pygit2==1.6.0; python_version >= '3.9' and platform_machine != "arm64"
+            pygit2==1.7.1; python_version >= '3.10' and platform_machine == "arm64"
+            """
+            )
+        )
+    compiled_requirements = os.path.join(
+        INPUT_REQUIREMENTS_DIR,
+        "py{}".format(python_version),
+        "{}.txt".format(input_requirement_name),
+    )
+    if os.path.exists(compiled_requirements):
+        os.unlink(compiled_requirements)
+    # Run it through pip-tools-compile
+    cmd = [
+        "pip-tools-compile",
+        "-v",
+        "--clean-cache",
+        "--platform={}".format(platform),
+        "--py-version={}".format(python_version),
+    ]
+    if machine:
+        cmd.append("--machine={}".format(machine))
+    retcode = run_command(
+        *cmd,
+        "-vv",
+        input_requirement,
+    )
+    assert retcode == 0
+    with open(compiled_requirements) as crfh:
+        compiled_contents = crfh.read()
+    assert "pygit2" in compiled_contents
+    if machine:
+        if python_version == "3.10" and machine == "arm64":
+            assert "pygit2==1.7.1" in compiled_contents
+        else:
+            assert "pygit2==1.7.1" not in compiled_contents
+
+        if python_version in ("3.5", "3.6", "3.7", "3.8"):
+            assert "pygit2==1.5.0" in compiled_contents
+        elif python_version == "3.9" and machine == "arm64":
+            assert "pygit2==" not in compiled_contents
+        elif python_version == "3.9" and machine != "arm64":
+            assert "pygit2==1.6.0" in compiled_contents
+    else:
+        if python_version in ("3.5", "3.6", "3.7", "3.8"):
+            assert "pygit2==1.5.0" in compiled_contents
+        else:
+            assert "pygit2==1.6.0" in compiled_contents

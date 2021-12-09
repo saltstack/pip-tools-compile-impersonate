@@ -28,7 +28,7 @@ nox.options.error_on_missing_interpreters = False
 def tests(session):
     session.run("python", "-m", "pip", "install", ".")
     session.install("pytest")
-    session.run("python", "-m", "pytest", "-ra", "-s", "-vv", *session.posargs)
+    session.run("python", "-m", "pytest", "-ra", "--showlocals", "-s", "-vv", *session.posargs)
 
 
 @nox.session(python=False, name="tests-system")
