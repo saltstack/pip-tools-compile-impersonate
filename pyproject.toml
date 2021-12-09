@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pip-tools-compile"
-version = "4.3"
+version = "4.4"
 description = "Impersonate different systems when running pip-tools `pip-compile` command"
 authors = ["Pedro Algarvio <pedro@algarvio.me>"]
 license = "Apache Software License 2.0"
