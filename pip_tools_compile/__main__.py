@@ -153,10 +153,18 @@ class ImpersonateSystem:
 def tweak_piptools_depcache_filename(version_info, platform, *args, **kwargs):
     depcache = DependencyCache(*args, **kwargs)
     # pylint: disable=protected-access
+    if os.environ.get("USE_STATIC_REQUIREMENTS", "0") == "1":
+        use_static_requirements = "-static"
+    else:
+        use_static_requirements = ""
     cache_file = os.path.join(
         os.path.dirname(depcache._cache_file),
-        "depcache-{}-ptc{}-py{}.{}-mocked-py{}.{}.json".format(
-            platform, __version__, *sys.version_info[:2], *version_info[:2]
+        "depcache{}-{}-ptc{}-py{}.{}-mocked-py{}.{}.json".format(
+            use_static_requirements,
+            platform,
+            __version__,
+            *sys.version_info[:2],
+            *version_info[:2],
         ),
     )
     log.info("Tweaking the pip-tools depcache file to: %s", cache_file)
@@ -441,6 +449,12 @@ def main():
         choices=("amd64", "arm64", "x86_64"),
         default=None,
     )
+    parser.add_argument(
+        "--static-requirements",
+        action="store_true",
+        default=False,
+        help="Set USE_STATIC_REQUIREMENTS=1 environment variable prior to compiling requirements",
+    )
     parser.add_argument("--py-version", default="{}.{}".format(*sys.version_info))
     parser.add_argument("--include", action="append", default=[])
     parser.add_argument("--output-dir", default=None)
@@ -476,6 +490,8 @@ def main():
 
     if not options.files:
         parser.exit(2, "Please pass at least one requirement file")
+
+    os.environ["USE_STATIC_REQUIREMENTS"] = "1" if options.static_requirements else "0"
 
     os.environ["PIP_TOOLS_COMPILE_CLEAN_CACHE"] = "1" if options.clean_cache else "0"
 
