@@ -85,21 +85,21 @@ jobs:
       run: |
         nox --forcecolor -e tests-3
 
-  FreeBSD:
-    runs-on: macos-latest
-    strategy:
-      fail-fast: false
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: Test
-      uses: vmactions/freebsd-vm@v0.1.4
-      with:
-        prepare: |
-          pkg install -y py38-pip git
-          ln -sf /usr/local/bin/python3.8 /usr/local/bin/python
-          ln -sf /usr/local/bin/python3.8 /usr/local/bin/python3
-          python -m pip install nox
-        run: |
-          nox --forcecolor -e patch-info
-          nox --forcecolor -e tests-3
+#  FreeBSD:
+#    runs-on: macos-latest
+#    strategy:
+#      fail-fast: false
+#
+#    steps:
+#    - uses: actions/checkout@v3
+#    - name: Test
+#      uses: vmactions/freebsd-vm@v0.1.4
+#      with:
+#        prepare: |
+#          pkg install -y py38-pip git
+#          ln -sf /usr/local/bin/python3.8 /usr/local/bin/python
+#          ln -sf /usr/local/bin/python3.8 /usr/local/bin/python3
+#          python -m pip install nox
+#        run: |
+#          nox --forcecolor -e patch-info
+#          nox --forcecolor -e tests-3
