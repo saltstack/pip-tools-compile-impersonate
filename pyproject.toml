@@ -24,7 +24,7 @@ pip-tools-compile = 'pip_tools_compile.__main__:main'
 [tool.poetry.dependencies]
 python = ">=3.6,<4.0"
 pip-tools = "5.5.0"
-pip = "20.2.4"
+pip = "20.3.4"
 setuptools-rust = "^0.12.1"
 wheel = "^0.37.0"
 setuptools = ">=49.6.0"
