@@ -74,19 +74,19 @@ class TargetPython(_TargetPython):
         self,
         mocked_python_version,
         mocked_platform,
-        platform=None,
+        platforms=None,
         py_version_info=None,
-        abi=None,
+        abis=None,
         implementation=None,
     ):
         if py_version_info is None:
             py_version_info = mocked_python_version
-        if platform is None:
-            platform = mocked_platform
+        if platforms is None:
+            platforms = [mocked_platform]
         super().__init__(
-            platform=platform,
+            platforms=platforms,
             py_version_info=py_version_info,
-            abi=abi,
+            abis=abis,
             implementation=implementation,
         )
 
