@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 pip-tools-compile
 ~~~~~~~~~~~~~~~~~
@@ -341,6 +340,27 @@ def compile_requirement_file(source, dest, options, unknown_args):
             with open(input_file) as rfh:
                 in_contents = rfh.read()
             for line in in_contents.splitlines():
+                constraint_flag = req_path = None
+                if line.strip().startswith("-c "):
+                    constraint_flag = "-c "
+                    req_path = os.path.abspath(
+                        line.split()[-1].format(
+                            py_version=options.py_version, platform=options.platform
+                        )
+                    )
+                if line.strip().startswith("--constraint="):
+                    constraint_flag = "--constraint="
+                    req_path = os.path.abspath(
+                        line.split("--constraint=")[-1].format(
+                            py_version=options.py_version, platform=options.platform
+                        )
+                    )
+                if constraint_flag and req_path:
+                    line = f"{constraint_flag}{os.path.relpath(req_path, os.getcwd())}"
+                    if input_file not in input_rewrites:
+                        input_rewrites[input_file] = input_file
+                        shutil.move(input_file, input_file + ".bak")
+                        atexit.register(shutil.move, input_file + ".bak", input_file)
                 match_found = False
                 for regex in regexes:
                     if match_found:
@@ -366,6 +386,36 @@ def compile_requirement_file(source, dest, options, unknown_args):
             else:
                 includes.append(input_file)
         call_args += includes
+
+    with open(source) as rfh:
+        source_contents = rfh.read()
+    if "{py_version}" in source_contents:
+        out_contents = []
+        for line in source_contents.splitlines():
+            constraint_flag = req_path = None
+            if line.strip().startswith("-c "):
+                constraint_flag = "-c "
+                req_path = os.path.abspath(
+                    line.split()[-1].format(
+                        py_version=options.py_version, platform=options.platform
+                    )
+                )
+            if line.strip().startswith("--constraint="):
+                constraint_flag = "--constraint="
+                req_path = os.path.abspath(
+                    line.split("--constraint=")[-1].format(
+                        py_version=options.py_version, platform=options.platform
+                    )
+                )
+            if constraint_flag and req_path:
+                line = f"{constraint_flag}{os.path.relpath(req_path, os.getcwd())}"
+                if os.path.exists(source):
+                    shutil.move(source, source + ".bak")
+                    atexit.register(shutil.move, source + ".bak", source)
+            out_contents.append(line)
+        with open(source, "w") as wfh:
+            for line in out_contents:
+                wfh.write("{}\n".format(line))
     call_args.append(source)
 
     original_sys_arg = sys.argv[:]
