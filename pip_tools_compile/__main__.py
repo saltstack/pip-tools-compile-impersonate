@@ -565,16 +565,6 @@ def main():
             file=sys.stderr,
         )
 
-    if sys.version_info >= (3, 10):
-        print(
-            "\n"
-            "=============================================================================\n"
-            "  Py3.10+ Preliminary Support. Please Run Under Py<3.10 In Case Of Problems  \n"
-            "=============================================================================\n"
-            "\n",
-            file=sys.stderr,
-        )
-
     impersonations = {
         "darwin": ImpersonateDarwin,
         "windows": ImpersonateWindows,
