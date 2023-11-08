@@ -1,2 +1,3 @@
 tests/files/py*/
 tests/files/*.in
+__pycache__

@@ -23,7 +23,7 @@ INPUT_REQUIREMENTS_DIR = os.path.relpath(
 EXPECTED_REQUIREMENTS_DIR = os.path.relpath(
     os.path.join(os.path.dirname(__file__), "files", "expected"), REPO_ROOT
 )
-TARGET_PYTHON_VERSIONS = ("3.5", "3.6", "3.7", "3.8", "3.9", "3.10")
+TARGET_PYTHON_VERSIONS = ("3.7", "3.8", "3.9", "3.10", "3.11", "3.12")
 
 
 @pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
@@ -271,19 +271,19 @@ def test_pyobjc(run_command, platform, python_version):
 
 @pytest.mark.parametrize("platform", ["linux", "darwin", "windows"])
 @pytest.mark.parametrize("python_version", TARGET_PYTHON_VERSIONS)
-def test_backports_ssl_match_hostname(run_command, platform, python_version):
+def test_backports_zoneinfo(run_command, platform, python_version):
     """
     pywin32 has been an issue when mocking the requirements file compilation. test it.
     """
     version_info = tuple(int(part) for part in python_version.split("."))
-    input_requirement_name = "backports-ssl-match-hostname"
+    input_requirement_name = "backports-zoneinfo"
     input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
     with open(input_requirement, "w") as wfh:
         wfh.write(
             textwrap.dedent(
                 """\
             pep8
-            backports.ssl-match-hostname==3.7.0.1 ; python_version < "3.7"
+            backports.zoneinfo==0.2.1 ; python_version < "3.9"
             """
             )
         )
@@ -307,10 +307,10 @@ def test_backports_ssl_match_hostname(run_command, platform, python_version):
     assert retcode == 0
     with open(compiled_requirements) as crfh:
         compiled_contents = crfh.read()
-    if version_info < (3, 7):
-        assert "backports.ssl-match-hostname" in compiled_contents
+    if version_info < (3, 9):
+        assert "backports.zoneinfo" in compiled_contents
     else:
-        assert "backports.ssl-match-hostname" not in compiled_contents
+        assert "backports.zoneinfo" not in compiled_contents
 
 
 def test_boto3_py35(run_command):
@@ -376,6 +376,7 @@ def test_platform_machine(run_command, platform, machine, python_version):
     """
     Test platform machine
     """
+    version_info = tuple(int(part) for part in python_version.split("."))
     input_requirement_name = "pygit2"
     input_requirement = os.path.join(INPUT_REQUIREMENTS_DIR, "{}.in".format(input_requirement_name))
     with open(input_requirement, "w") as wfh:
@@ -415,19 +416,19 @@ def test_platform_machine(run_command, platform, machine, python_version):
         compiled_contents = crfh.read()
     assert "pygit2" in compiled_contents
     if machine:
-        if python_version == "3.10" and machine == "arm64":
+        if version_info > (3, 9) and machine == "arm64":
             assert "pygit2==1.7.1" in compiled_contents
         else:
             assert "pygit2==1.7.1" not in compiled_contents
 
-        if python_version in ("3.5", "3.6", "3.7", "3.8"):
+        if version_info < (3, 9):
             assert "pygit2==1.5.0" in compiled_contents
         elif python_version == "3.9" and machine == "arm64":
             assert "pygit2==" not in compiled_contents
         elif python_version == "3.9" and machine != "arm64":
             assert "pygit2==1.6.0" in compiled_contents
     else:
-        if python_version in ("3.5", "3.6", "3.7", "3.8"):
+        if version_info < (3, 9):
             assert "pygit2==1.5.0" in compiled_contents
         else:
             assert "pygit2==1.6.0" in compiled_contents
