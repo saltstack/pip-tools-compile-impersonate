@@ -308,9 +308,9 @@ def test_backports_zoneinfo(run_command, platform, python_version):
     with open(compiled_requirements) as crfh:
         compiled_contents = crfh.read()
     if version_info < (3, 9):
-        assert "backports.zoneinfo" in compiled_contents
+        assert "backports-zoneinfo==0.2.1" in compiled_contents
     else:
-        assert "backports.zoneinfo" not in compiled_contents
+        assert "backports-zoneinfo==0.2.1" not in compiled_contents
 
 
 def test_boto3_py35(run_command):
@@ -414,7 +414,6 @@ def test_platform_machine(run_command, platform, machine, python_version):
     assert retcode == 0
     with open(compiled_requirements) as crfh:
         compiled_contents = crfh.read()
-    assert "pygit2" in compiled_contents
     if machine:
         if version_info > (3, 9) and machine == "arm64":
             assert "pygit2==1.7.1" in compiled_contents

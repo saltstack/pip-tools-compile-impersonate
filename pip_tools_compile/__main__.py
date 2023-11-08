@@ -50,7 +50,7 @@ class PyPIRepository(_PyPIRepository):
         super().__init__(pip_args, cache_dir)
         # We re-initialize self.finder because we want to pass the target_python
         # which avoids a lot of sys,version_info patching
-        self.finder = self.command._build_package_finder(
+        self._finder = self.command._build_package_finder(
             options=self.options,
             session=self.session,
             target_python=TargetPython(mocked_python_version, mocked_platform),
@@ -202,9 +202,7 @@ class ImpersonateWindows(ImpersonateSystem):
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch("pip._internal.network.session.libc_ver", return_value=("", ""))
-            yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags", return_value=["win_amd64"]
-            )
+            yield mock.patch("pip._vendor.packaging.tags.platform_tags", return_value=["win_amd64"])
 
 
 class ImpersonateDarwin(ImpersonateSystem):
@@ -223,7 +221,7 @@ class ImpersonateDarwin(ImpersonateSystem):
             for version in range(4, 16):
                 for cpu in ("fat32", "fat64", "intel", "universal", "x86_64"):
                     tags.append("macosx_10_{}_{}".format(version, cpu))
-            yield mock.patch("pip._vendor.packaging.tags._platform_tags", return_value=tags)
+            yield mock.patch("pip._vendor.packaging.tags.platform_tags", return_value=tags)
 
 
 class ImpersonateLinux(ImpersonateSystem):
@@ -239,7 +237,7 @@ class ImpersonateLinux(ImpersonateSystem):
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags",
+                "pip._vendor.packaging.tags.platform_tags",
                 return_value=[
                     "linux_x86_64",
                     "manylinux1_x86_64",
@@ -265,7 +263,7 @@ class ImpersonateFreeBSD(ImpersonateSystem):
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags",
+                "pip._vendor.packaging.tags.platform_tags",
                 return_value=[
                     "{}_{}_{}".format(
                         self.platform_system.lower(),
@@ -326,7 +324,7 @@ def compile_requirement_file(source, dest, options, unknown_args):
     for regex in options.passthrough_line_from_input:
         regexes.append(re.compile(regex))
 
-    call_args = ["pip-compile", "-o", dest]
+    call_args = ["pip-compile", "--no-header", "-o", dest]
     if unknown_args:
         for unknown_arg in unknown_args:
             if "{py_version}" in unknown_arg:
@@ -477,8 +475,8 @@ def show_info_to_patch():
         print("  * {}: '{}'".format(key, DEFAULT_ENVIRONMENT[key]))
     import pip._vendor.packaging.tags
 
-    print(" * pip._vendor.packaging.tags._platform_tags:")
-    for tag in sorted(pip._vendor.packaging.tags._platform_tags()):
+    print(" * pip._vendor.packaging.tags.platform_tags:")
+    for tag in sorted(pip._vendor.packaging.tags.platform_tags()):
         print("  * '{}'".format(tag))
 
 
