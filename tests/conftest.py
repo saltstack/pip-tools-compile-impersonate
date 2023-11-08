@@ -5,10 +5,9 @@ conftest
 import logging
 import os
 import subprocess
-import sys
-from collections import namedtuple
+from dataclasses import dataclass
+from typing import Optional
 
-import attr
 import pytest
 
 REPO_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -16,7 +15,7 @@ REPO_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 log = logging.getLogger(__name__)
 
 
-@attr.s(frozen=True)
+@dataclass(frozen=True)
 class ProcessResult:
     """
     This class holds the resulting data from a subprocess command.
@@ -35,15 +34,14 @@ class ProcessResult:
         Cast :py:class:`~ProcessResult` to a string to pretty-print it.
     """
 
-    exitcode = attr.ib()
-    stdout = attr.ib()
-    stderr = attr.ib()
-    cmdline = attr.ib(default=None, kw_only=True)
+    exitcode: int
+    stdout: str
+    stderr: str
+    cmdline: Optional[str] = None
 
-    @exitcode.validator
-    def _validate_exitcode(self, attribute, value):
-        if not isinstance(value, int):
-            raise ValueError(f"'exitcode' needs to be an integer, not '{type(value)}'")
+    def __post_init__(self):
+        if not isinstance(self.exitcode, int):
+            raise ValueError(f"'exitcode' needs to be an integer, not '{type(self.exitcode)}'")
 
     def __str__(self):
         """
