@@ -118,6 +118,12 @@ class ImpersonateSystem:
             assert machine.lower() in ("arm64", "amd64", "x86_64")
             self.platform_machine = machine
 
+    def get_tags_func(self):
+        import pip._vendor.packaging.tags
+        if "platform_tags" in dir(pip._vendor.packaging.tags):
+            return "pip._vendor.packaging.tags.platform_tags"
+        return "pip._vendor.packaging.tags._platform_tags"
+
     def get_mocks(self):
         yield mock.patch(
             "piptools.scripts.compile.DependencyCache",
@@ -203,7 +209,7 @@ class ImpersonateWindows(ImpersonateSystem):
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch("pip._internal.network.session.libc_ver", return_value=("", ""))
             yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags", return_value=["win_amd64"]
+                self.get_tags_func(), return_value=["win_amd64"]
             )
 
 
@@ -223,7 +229,7 @@ class ImpersonateDarwin(ImpersonateSystem):
             for version in range(4, 16):
                 for cpu in ("fat32", "fat64", "intel", "universal", "x86_64"):
                     tags.append("macosx_10_{}_{}".format(version, cpu))
-            yield mock.patch("pip._vendor.packaging.tags._platform_tags", return_value=tags)
+            yield mock.patch(self.get_tags_func(), return_value=tags)
 
 
 class ImpersonateLinux(ImpersonateSystem):
@@ -239,7 +245,7 @@ class ImpersonateLinux(ImpersonateSystem):
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags",
+                self.get_tags_func(),
                 return_value=[
                     "linux_x86_64",
                     "manylinux1_x86_64",
@@ -265,7 +271,7 @@ class ImpersonateFreeBSD(ImpersonateSystem):
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags",
+                self.get_tags_func(),
                 return_value=[
                     "{}_{}_{}".format(
                         self.platform_system.lower(),
@@ -477,8 +483,11 @@ def show_info_to_patch():
         print("  * {}: '{}'".format(key, DEFAULT_ENVIRONMENT[key]))
     import pip._vendor.packaging.tags
 
-    print(" * pip._vendor.packaging.tags._platform_tags:")
-    for tag in sorted(pip._vendor.packaging.tags._platform_tags()):
+    tags_func = getattr(pip._vendor.packaging.tags, "platform_tags", None)
+    if tags_func is None:
+        tags_func = getattr(pip._vendor.packaging.tags, "_platform_tags")
+    print(" * {}:".format(tags_func.__name__))
+    for tag in sorted(tags_func()):
         print("  * '{}'".format(tag))
 
 
