@@ -50,7 +50,7 @@ class PyPIRepository(_PyPIRepository):
         super().__init__(pip_args, cache_dir)
         # We re-initialize self.finder because we want to pass the target_python
         # which avoids a lot of sys,version_info patching
-        self.finder = self.command._build_package_finder(
+        self._finder = self.command._build_package_finder(
             options=self.options,
             session=self.session,
             target_python=TargetPython(mocked_python_version, mocked_platform),
