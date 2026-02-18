@@ -133,10 +133,10 @@ class ImpersonateSystem:
             "pip._vendor.packaging.markers.default_environment",
             wraps=functools.partial(tweak_packaging_markers, self),
         )
-        yield mock.patch(
-            "pip._vendor.distlib.markers.DEFAULT_CONTEXT",
-            new_callable=mock.PropertyMock(return_value=tweak_packaging_markers(self)),
-        )
+        # yield mock.patch(
+        #     "pip._vendor.distlib.markers.DEFAULT_CONTEXT",
+        #     new_callable=mock.PropertyMock(return_value=tweak_packaging_markers(self)),
+        # )
 
     def __enter__(self):
         for mock_obj in self.get_mocks():
