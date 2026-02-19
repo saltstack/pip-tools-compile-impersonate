@@ -50,7 +50,7 @@ class PyPIRepository(_PyPIRepository):
         super().__init__(pip_args, cache_dir)
         # We re-initialize self.finder because we want to pass the target_python
         # which avoids a lot of sys,version_info patching
-        self.finder = self.command._build_package_finder(
+        self._finder = self.command._build_package_finder(
             options=self.options,
             session=self.session,
             target_python=TargetPython(mocked_python_version, mocked_platform),
@@ -118,6 +118,12 @@ class ImpersonateSystem:
             assert machine.lower() in ("arm64", "amd64", "x86_64")
             self.platform_machine = machine
 
+    def get_tags_func(self):
+        import pip._vendor.packaging.tags
+        if "platform_tags" in dir(pip._vendor.packaging.tags):
+            return "pip._vendor.packaging.tags.platform_tags"
+        return "pip._vendor.packaging.tags._platform_tags"
+
     def get_mocks(self):
         yield mock.patch(
             "piptools.scripts.compile.DependencyCache",
@@ -133,10 +139,10 @@ class ImpersonateSystem:
             "pip._vendor.packaging.markers.default_environment",
             wraps=functools.partial(tweak_packaging_markers, self),
         )
-        yield mock.patch(
-            "pip._vendor.distlib.markers.DEFAULT_CONTEXT",
-            new_callable=mock.PropertyMock(return_value=tweak_packaging_markers(self)),
-        )
+        # yield mock.patch(
+        #     "pip._vendor.distlib.markers.DEFAULT_CONTEXT",
+        #     new_callable=mock.PropertyMock(return_value=tweak_packaging_markers(self)),
+        # )
 
     def __enter__(self):
         for mock_obj in self.get_mocks():
@@ -203,7 +209,7 @@ class ImpersonateWindows(ImpersonateSystem):
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch("pip._internal.network.session.libc_ver", return_value=("", ""))
             yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags", return_value=["win_amd64"]
+                self.get_tags_func(), return_value=["win_amd64"]
             )
 
 
@@ -223,7 +229,7 @@ class ImpersonateDarwin(ImpersonateSystem):
             for version in range(4, 16):
                 for cpu in ("fat32", "fat64", "intel", "universal", "x86_64"):
                     tags.append("macosx_10_{}_{}".format(version, cpu))
-            yield mock.patch("pip._vendor.packaging.tags._platform_tags", return_value=tags)
+            yield mock.patch(self.get_tags_func(), return_value=tags)
 
 
 class ImpersonateLinux(ImpersonateSystem):
@@ -239,7 +245,7 @@ class ImpersonateLinux(ImpersonateSystem):
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags",
+                self.get_tags_func(),
                 return_value=[
                     "linux_x86_64",
                     "manylinux1_x86_64",
@@ -265,7 +271,7 @@ class ImpersonateFreeBSD(ImpersonateSystem):
             # We don't want pip trying query python's internals, it knows how to mock that internal information
             yield mock.patch("pip._vendor.packaging.tags._get_config_var", return_value=None)
             yield mock.patch(
-                "pip._vendor.packaging.tags._platform_tags",
+                self.get_tags_func(),
                 return_value=[
                     "{}_{}_{}".format(
                         self.platform_system.lower(),
@@ -477,8 +483,11 @@ def show_info_to_patch():
         print("  * {}: '{}'".format(key, DEFAULT_ENVIRONMENT[key]))
     import pip._vendor.packaging.tags
 
-    print(" * pip._vendor.packaging.tags._platform_tags:")
-    for tag in sorted(pip._vendor.packaging.tags._platform_tags()):
+    tags_func = getattr(pip._vendor.packaging.tags, "platform_tags", None)
+    if tags_func is None:
+        tags_func = getattr(pip._vendor.packaging.tags, "_platform_tags")
+    print(" * {}:".format(tags_func.__name__))
+    for tag in sorted(tags_func()):
         print("  * '{}'".format(tag))
 
 
